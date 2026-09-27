@@ -1,0 +1,29 @@
+[project]
+name = "thesys"
+version = "0.1.0"
+description = "Executable methodology runtime and CLI for AI-assisted software engineering."
+requires-python = ">=3.11"
+dependencies = ["openai>=1.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+docs = ["mkdocs>=1.6", "mkdocs-material>=9.5"]
+
+[project.scripts]
+thesys = "thesys_cli.main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "engine"}
+
+[tool.setuptools.packages.find]
+where = ["engine"]
+
+[tool.pytest.ini_options]
+pythonpath = ["engine"]
+
+[tool.setuptools.package-data]
+"thesys_engine" = ["bundle/methodology/**/*", "bundle/methodology/**"]

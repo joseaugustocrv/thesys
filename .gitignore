@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+site/
+.dist/
+.env
+.thesys/local/
+.thesys-workspace/

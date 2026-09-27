@@ -1,0 +1,45 @@
+site_name: Thesys
+site_description: Engineering software with explicit intent, controlled change, traceability, and verifiable evidence.
+
+theme:
+  name: material
+  logo: assets/logo/thesys-icon.svg
+  favicon: assets/logo/thesys-icon.svg
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Methodology: methodology.md
+  - Project model: project-model.md
+  - Engineering model: artifact-model.md
+  - Architecture: architecture.md
+  - Design principles: design-principles.md
+  - Quality: quality.md
+  - Security: security.md
+  - AI + Human: ai.md
+  - Change management: change-management.md
+  - Verification: verification.md
+  - Convergence: convergence.md
+  - Evolution: evolution.md
+  - Tooling: cli.md
+  - Definition: definition.md

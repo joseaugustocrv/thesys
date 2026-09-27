@@ -1,0 +1,14 @@
+name: Documentation Quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  markdown:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v23.1.0
+        with:
+          globs: "**/*.md !.git/** !site/**"
