@@ -14,18 +14,36 @@ Software can be produced faster than teams can maintain shared understanding of 
 
 Thesys addresses that problem by making engineering intent, authority, relationships, verification and evidence explicit parts of the lifecycle.
 
-## The engineering loop
+## The engineering lifecycle
+
+The functional v0.1.0 lifecycle is:
 
 ```text
-Intent
+Intent & Discovery
+  ↓
+Engineering Context
+  ↓
+Governance & Constitution
   ↓
 Requirements
   ↓
+Clarification
+  ↓
 Specification
+  ↓
+Acceptance Criteria
   ↓
 Architecture & Design
   ↓
-Plan
+Quality Engineering
+  ↓
+Security Engineering
+  ↓
+Risk & Exception Analysis
+  ↓
+Implementation Plan
+  ↓
+Tasks
   ↓
 Implementation
   ↓
@@ -35,9 +53,14 @@ Convergence
   ↓
 Release
   ↓
-Operation & Evolution
-  ↺
+Operation & Observability
+  ↓
+Evolution & Maintenance
+  ↓
+Retirement
 ```
+
+Each stage produces or advances an explicit engineering artifact or controlled execution state. Human approval is required before progression, and authoritative changes can invalidate dependent work.
 
 The lifecycle is not a rigid waterfall. Engineering work can iterate, branch, recurse into smaller units, or return to an earlier source of intent when new information changes the expected result.
 

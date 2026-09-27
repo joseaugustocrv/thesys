@@ -10,6 +10,8 @@ The runtime enforces this rule rather than relying on team convention.
 
 ## End-to-end flow
 
+The v0.1.0 delivery flow is:
+
 ```text
 Human Intent Input
        ↓
@@ -25,28 +27,42 @@ Human Approval
        ↓
 Authoritative Intent + Context
        ↓
-AI Engineering Proposals
+Governance
        ↓
-Human Answers / Approval
+Requirements
        ↓
-Implementation Proposal
+Clarification
        ↓
-Human Approval
+Specification
        ↓
-Applied Software
+Acceptance Criteria
        ↓
-Automated Verification + AI Verification Proposal
+Architecture & Design
        ↓
-Human Approval
+Quality
        ↓
-Convergence Proposal
+Security
        ↓
-Release Proposal
+Risk & Exception Analysis
        ↓
-Human Approval
+Implementation Plan
+       ↓
+Tasks
+       ↓
+Implementation Proposal / Execution
+       ↓
+Verification
+       ↓
+Convergence
+       ↓
+Release
+       ↓
+Operation → Evolution → Retirement
 ```
 
-The process is iterative. If a later activity discovers information that changes an authoritative artifact, Thesys propagates the change downstream and requires affected artifacts to be re-proposed and re-approved.
+For each document stage, the AI produces a non-authoritative proposal, questions are resolved as needed, and the responsible human explicitly accepts the proposal before it becomes authoritative. Implementation is controlled separately: the AI proposes changes and the runtime applies an accepted implementation proposal. Verification executes the configured verification command and records evidence.
+
+Engineering Units are a decomposition mechanism, not an additional mandatory lifecycle stage. A project may use the default unit directly, or the human may introduce one or more units when the scope benefits from decomposition. Once units exist, the same lifecycle applies to each relevant unit while preserving parent, dependency and traceability relationships.
 
 ## Human responsibilities
 

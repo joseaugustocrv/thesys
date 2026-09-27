@@ -39,7 +39,16 @@ This creates the authoritative Intent and Engineering Context in one explicit hu
 
 ## Engineering stages
 
-For each stage the normal pattern is:
+After Discovery, the standard v0.1.0 engineering sequence is:
+
+```text
+Context → Governance → Requirements → Clarification → Specification
+→ Acceptance → Architecture → Quality → Security → Risk
+→ Plan → Tasks → Implementation → Verification → Convergence → Release
+→ Operation → Evolution → Retirement
+```
+
+For document stages, the normal proposal pattern is:
 
 ```powershell
 thesys generate requirements
@@ -47,9 +56,20 @@ thesys proposal show requirements
 thesys proposal accept requirements
 ```
 
-If the AI raises questions, answer them and regenerate the proposal before approval.
+The same `generate → proposal show → proposal accept` pattern applies to the
+other document stages. If the AI raises blocking questions, answer them and
+regenerate the proposal before approval. A question that is only a downstream
+implementation, verification, release or operational condition does not by
+itself block approval of the current baseline.
 
 There is deliberately no general `stage approve` command. Approval without a current AI proposal is invalid by design.
+
+### Engineering Units
+
+Engineering Units are optional. A project can use the default unit directly;
+when decomposition is useful, units can be created and related before or while
+executing the lifecycle for their respective scopes. Unit-specific artifacts
+are stored under the corresponding lifecycle stage and unit.
 
 ## Implementation
 

@@ -73,14 +73,25 @@ project/
 contains runtime metadata and execution state. Ordinary project documentation
 can remain in `docs/` without being confused with Thesys lifecycle artifacts.
 
-## Project → Intent → Engineering Units
+## Project → Intent → Lifecycle / Engineering Units
 
-The normal entry path is:
+The minimum project path is:
 
 ```text
 Project
   ↓
-Intent
+Intent & Discovery
+  ↓
+Authoritative Intent + Context
+  ↓
+Lifecycle execution
+```
+
+Engineering Units are optional decomposition. When the project benefits from
+separate scopes, the human can introduce units from the authoritative Intent:
+
+```text
+Authoritative Intent
   ↓
 Engineering Unit Proposal
   ↓
@@ -88,15 +99,17 @@ Human review and acceptance
   ↓
 Engineering Units
   ↓
-Lifecycle execution
+Lifecycle execution per relevant unit
 ```
+
+A simple project may continue with the default unit without an explicit
+decomposition step. Larger systems can use multiple units and preserve parent,
+dependency and traceability relationships between them.
 
 The human owns the source Intent input. The configured AI provider may refine
 that input into a non-authoritative Intent proposal. The responsible human
-accepts the proposal to make the Intent authoritative. AI or deterministic
-providers may then propose Engineering Units from that authoritative Intent,
-but those proposals remain non-authoritative until accepted by the responsible
-human.
+accepts the proposal to make the Intent authoritative. Engineering Unit
+proposals are likewise non-authoritative until explicitly accepted.
 
 ## Recursive project structure
 
