@@ -1,5 +1,22 @@
 # Changelog
 
+
+## 0.4.0 - 2026-09-28
+
+### Added
+- Enforced the `Thesys Projects` workspace boundary for project initialization and creation.
+- Added project-level System Architecture Integration that synthesizes approved Engineering Unit architectures.
+- Added aggregate lifecycle dependency handling and cross-Unit architecture traceability.
+
+### Changed
+- Engineering Units now explicitly control complexity for larger systems; the default system unit becomes a container when child Units exist.
+- Unit-scoped lifecycle stages remain independent, while System Architecture provides an integrated project-level view before Quality, Security and Risk.
+- Registry artifact identifiers now consistently use methodology-defined prefixes for every lifecycle stage.
+- Updated methodology, templates, CLI documentation, bundled methodology and tests to reflect the revised model.
+
+### Validation
+- Full automated test suite: 27 passed.
+
 ## 0.3.0 - 2026-09-28
 
 ### Added

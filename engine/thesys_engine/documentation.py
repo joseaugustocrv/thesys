@@ -9,28 +9,14 @@ from .registry import get
 from .workflow import _load_answers
 
 
-LIFECYCLE = [
-    ("intent", "INT", "Intent"),
-    ("context", "CTX", "Context"),
-    ("governance", "GOV", "Governance"),
-    ("requirements", "REQUIREMENTS", "Requirements"),
-    ("clarification", "CLARIFICATION", "Clarification"),
-    ("specification", "SPECIFICATION", "Specification"),
-    ("acceptance", "ACCEPTANCE", "Acceptance"),
-    ("architecture", "ARCHITECTURE", "Architecture"),
-    ("quality", "QUALITY", "Quality"),
-    ("security", "SECURITY", "Security"),
-    ("risk", "RISK", "Risk"),
-    ("plan", "PLAN", "Plan"),
-    ("tasks", "TASKS", "Tasks"),
-    ("implementation", "IMPLEMENTATION", "Implementation"),
-    ("verification", "VERIFICATION", "Verification"),
-    ("convergence", "CONVERGENCE", "Convergence"),
-    ("release", "RELEASE", "Release"),
-    ("operation", "OPERATION", "Operation"),
-    ("evolution", "EVOLUTION", "Evolution"),
-    ("retirement", "RETIREMENT", "Retirement"),
-]
+def _load_lifecycle():
+    from .methodology import load_methodology
+    bundle = Path(__file__).resolve().parent / "bundle"
+    methodology = load_methodology(bundle)
+    return [(stage.id, str(stage.config.get("artifact_prefix", stage.id.upper())), stage.name) for stage in methodology.stages]
+
+
+LIFECYCLE = _load_lifecycle()
 LIFECYCLE_TYPES = {code.upper() for _, code, _ in LIFECYCLE}
 
 

@@ -10,7 +10,7 @@ def complete_to_implementation(tmp_path):
     for args in [
         ['init'],['intent','create','Build a system.'],['discovery','propose','--agent','mock'],['discovery','accept'],['generate','governance','--agent','mock'],['proposal','accept','governance']]:
         assert main(args+['--path',str(tmp_path)])==0
-    for stage in ['requirements','clarification','specification','acceptance','architecture','quality','security','risk','plan','tasks']:
+    for stage in ['requirements','clarification','specification','acceptance','architecture','system-architecture','quality','security','risk','plan','tasks']:
         assert main(['generate',stage,'--agent','mock','--path',str(tmp_path)])==0
         assert main(['proposal','accept',stage,'--path',str(tmp_path)])==0
 

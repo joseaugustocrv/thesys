@@ -8,8 +8,14 @@ def test_lifecycle_is_well_formed():
     assert ids[0]=='intent'
     assert ids[-1]=='retirement'
     assert 'implementation' in ids
+    assert 'system-architecture' in ids
+    assert m.stage('system-architecture').config.get('scope') == 'project'
+    assert m.stage('system-architecture').config.get('aggregate_units') is True
+    assert all(s.config.get('artifact_prefix') for s in m.stages)
     assert m.rules['human_may_only_approve_existing_ai_proposal'] is True
     assert m.rules['implementation']['execute_generated_code'] is False
+    assert m.rules['engineering_units_control_complexity'] is True
+    assert m.rules['system_architecture_synthesizes_unit_architectures'] is True
 
 def test_delivery_release_is_inside_full_lifecycle():
     m=load_methodology(ROOT)

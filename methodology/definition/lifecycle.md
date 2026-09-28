@@ -2,7 +2,7 @@
 thesys:
   schema: "4"
   methodology: "thesys-core"
-  version: "0.1.0"
+  version: "0.2.0"
   language: "en-US"
 lifecycle:
   stages:
@@ -14,6 +14,7 @@ lifecycle:
       depends_on: []
       action: discovery
       config:
+        artifact_prefix: INT
         scope: project
     - id: context
       name: Engineering Context
@@ -23,6 +24,7 @@ lifecycle:
       depends_on: [intent]
       action: document
       config:
+        artifact_prefix: CTX
         scope: unit
     - id: governance
       name: Governance & Constitution
@@ -32,6 +34,7 @@ lifecycle:
       depends_on: [intent, context]
       action: document
       config:
+        artifact_prefix: GOV
         scope: project
     - id: requirements
       name: Requirements
@@ -40,6 +43,8 @@ lifecycle:
       approval: required
       depends_on: [intent, context, governance]
       action: document
+      config:
+        artifact_prefix: REQ
     - id: clarification
       name: Clarification
       artifact: engineering/clarification/{unit}/clarification.md
@@ -47,6 +52,8 @@ lifecycle:
       approval: required
       depends_on: [requirements]
       action: document
+      config:
+        artifact_prefix: CLR
     - id: specification
       name: Specification
       artifact: engineering/specification/{unit}/specification.md
@@ -54,6 +61,8 @@ lifecycle:
       approval: required
       depends_on: [requirements, clarification]
       action: document
+      config:
+        artifact_prefix: SPE
     - id: acceptance
       name: Acceptance Criteria
       artifact: engineering/acceptance/{unit}/acceptance.md
@@ -61,6 +70,8 @@ lifecycle:
       approval: required
       depends_on: [requirements, specification]
       action: document
+      config:
+        artifact_prefix: ACC
     - id: architecture
       name: Architecture & Design
       artifact: engineering/architecture/{unit}/architecture.md
@@ -68,34 +79,56 @@ lifecycle:
       approval: required
       depends_on: [context, requirements, specification, acceptance]
       action: document
+      config:
+        artifact_prefix: ARC
+    - id: system-architecture
+      name: System Architecture Integration
+      artifact: engineering/architecture/system-architecture.md
+      template: methodology/templates/system-architecture.md
+      approval: required
+      depends_on: [architecture]
+      action: document
+      config:
+        artifact_prefix: ARC
+        scope: project
+        aggregate_units: true
+        aggregate_relation: synthesizes
     - id: quality
       name: Quality Engineering
       artifact: engineering/quality/{unit}/quality.md
       template: methodology/templates/quality.md
       approval: required
-      depends_on: [requirements, architecture]
+      depends_on: [requirements, architecture, system-architecture]
       action: document
+      config:
+        artifact_prefix: QRE
     - id: security
       name: Security Engineering
       artifact: engineering/security/{unit}/security.md
       template: methodology/templates/security.md
       approval: required
-      depends_on: [context, requirements, architecture]
+      depends_on: [context, requirements, architecture, system-architecture]
       action: document
+      config:
+        artifact_prefix: SEC
     - id: risk
       name: Risk & Exception Analysis
       artifact: engineering/risk/{unit}/risk.md
       template: methodology/templates/risk.md
       approval: required
-      depends_on: [requirements, architecture, quality, security]
+      depends_on: [requirements, architecture, system-architecture, quality, security]
       action: document
+      config:
+        artifact_prefix: RSK
     - id: plan
       name: Implementation Plan
       artifact: engineering/plan/{unit}/plan.md
       template: methodology/templates/plan.md
       approval: required
-      depends_on: [specification, architecture, quality, security, risk]
+      depends_on: [specification, architecture, system-architecture, quality, security, risk]
       action: document
+      config:
+        artifact_prefix: PLN
     - id: tasks
       name: Tasks
       artifact: engineering/tasks/{unit}/tasks.md
@@ -103,14 +136,17 @@ lifecycle:
       approval: required
       depends_on: [plan]
       action: document
+      config:
+        artifact_prefix: TSK
     - id: implementation
       name: Implementation
       artifact: null
       template: methodology/templates/implementation.md
       approval: required
-      depends_on: [requirements, specification, acceptance, architecture, quality, security, plan, tasks, risk]
+      depends_on: [requirements, specification, architecture, system-architecture, quality, security, plan, tasks, risk]
       action: implementation
       config:
+        artifact_prefix: IMP
         scope: unit
     - id: verification
       name: Verification
@@ -120,14 +156,17 @@ lifecycle:
       depends_on: [implementation, requirements, acceptance, quality, security]
       action: verify
       config:
+        artifact_prefix: VER
         command: "python -m pytest -q"
     - id: convergence
       name: Convergence
       artifact: engineering/convergence/{unit}/convergence.md
       template: methodology/templates/convergence.md
       approval: required
-      depends_on: [intent, requirements, specification, architecture, risk, implementation, verification]
+      depends_on: [intent, requirements, specification, architecture, system-architecture, risk, implementation, verification]
       action: document
+      config:
+        artifact_prefix: CON
     - id: release
       name: Release
       artifact: engineering/release/{unit}/release.md
@@ -136,6 +175,7 @@ lifecycle:
       depends_on: [verification, convergence, risk]
       action: document
       config:
+        artifact_prefix: REL
         delivery_milestone: true
     - id: operation
       name: Operation & Observability
@@ -144,6 +184,8 @@ lifecycle:
       approval: required
       depends_on: [release]
       action: document
+      config:
+        artifact_prefix: OPS
     - id: evolution
       name: Evolution & Maintenance
       artifact: engineering/evolution/{unit}/evolution.md
@@ -151,6 +193,8 @@ lifecycle:
       approval: required
       depends_on: [operation]
       action: document
+      config:
+        artifact_prefix: CHG
     - id: retirement
       name: Retirement
       artifact: engineering/retirement/{unit}/retirement.md
@@ -158,6 +202,8 @@ lifecycle:
       approval: required
       depends_on: [evolution]
       action: document
+      config:
+        artifact_prefix: RET
   rules:
     human_approval_required_before_progression: true
     proposals_are_non_authoritative: true
@@ -166,6 +212,9 @@ lifecycle:
     unresolved_questions_block_affected_gate: true
     evidence_required_for_verification: true
     exceptions_require_explicit_risk_acceptance: true
+    engineering_units_control_complexity: true
+    default_unit_becomes_container_when_children_exist: true
+    system_architecture_synthesizes_unit_architectures: true
     utf8: true
     blocking_markers: ["Status: Open", "BLOCKED", "TODO:DECISION"]
     implementation:

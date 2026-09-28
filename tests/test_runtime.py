@@ -18,12 +18,18 @@ def test_end_to_end_from_human_intent_to_retirement(tmp_path,monkeypatch):
     assert status(tmp_path,load_methodology(ROOT))['intent']['status']=='approved'
     assert cli('generate','governance','--agent','mock')==0
     assert cli('proposal','accept','governance')==0
-    for stage in ['requirements','clarification','specification','acceptance','architecture','quality','security','risk','plan','tasks']:
+    for stage in ['requirements','clarification','specification','acceptance','architecture','system-architecture','quality','security','risk','plan','tasks']:
         assert cli('generate',stage,'--agent','mock')==0
         assert cli('proposal','accept',stage)==0
     assert cli('implementation','propose','--agent','mock')==0
     assert cli('implementation','accept')==0
     assert (tmp_path/'src/main.py').is_file()
+    import subprocess
+    class Result:
+        returncode=0
+        stdout='project verification passed'
+        stderr=''
+    monkeypatch.setattr(subprocess, 'run', lambda *args, **kwargs: Result())
     assert cli('verify','--agent','mock')==0
     assert cli('proposal','accept','verification')==0
     for stage in ['convergence','release','operation','evolution','retirement']:

@@ -62,7 +62,7 @@ Operation → Evolution → Retirement
 
 For each document stage, the AI produces a non-authoritative proposal, questions are resolved as needed, and the responsible human explicitly accepts the proposal before it becomes authoritative. Implementation is controlled separately: the AI proposes changes and the runtime applies an accepted implementation proposal. Verification executes the configured verification command and records evidence.
 
-Engineering Units are a decomposition mechanism, not an additional mandatory lifecycle stage. A project may use the default unit directly, or the human may introduce one or more units when the scope benefits from decomposition. Once units exist, the same lifecycle applies to each relevant unit while preserving parent, dependency and traceability relationships.
+Engineering Units control complexity rather than representing arbitrary technical fragments. A small project may use the default system unit directly. When child Units exist, unit-scoped lifecycle work is performed independently for the relevant Units. After their local Architecture stages, the lifecycle returns to the project through System Architecture Integration, which synthesizes the approved Unit architectures into a system-level view without replacing them.
 
 ## Human responsibilities
 
@@ -98,7 +98,7 @@ The lifecycle is recursive and can be applied to a system, domain, module, servi
 
 The standard delivery path is:
 
-`Intent → Context → Governance → Requirements → Clarification → Specification → Acceptance → Architecture → Quality → Security → Risk → Plan → Tasks → Implementation → Verification → Convergence → Release`
+`Intent → Context → Governance → Requirements → Clarification → Specification → Acceptance → Unit Architecture → System Architecture Integration → Quality → Security → Risk → Plan → Tasks → Implementation → Verification → Convergence → Release`
 
 After Release, the lifecycle continues through Operation, Evolution and Retirement.
 

@@ -43,8 +43,8 @@ After Discovery, the standard v0.1.0 engineering sequence is:
 
 ```text
 Context → Governance → Requirements → Clarification → Specification
-→ Acceptance → Architecture → Quality → Security → Risk
-→ Plan → Tasks → Implementation → Verification → Convergence → Release
+→ Acceptance → Unit Architecture → System Architecture Integration
+→ Quality → Security → Risk → Plan → Tasks → Implementation → Verification → Convergence → Release
 → Operation → Evolution → Retirement
 ```
 
@@ -66,10 +66,7 @@ There is deliberately no general `stage approve` command. Approval without a cur
 
 ### Engineering Units
 
-Engineering Units are optional. A project can use the default unit directly;
-when decomposition is useful, units can be created and related before or while
-executing the lifecycle for their respective scopes. Unit-specific artifacts
-are stored under the corresponding lifecycle stage and unit.
+Engineering Units control complexity. A small project can use the default system unit directly. When child Units are introduced, unit-scoped artifacts are produced independently for those Units. The default system unit becomes a project/system container for unit-scoped work. After each relevant Unit reaches Architecture, `system-architecture` synthesizes the approved Unit architectures into `engineering/architecture/system-architecture.md`. This system-level artifact does not replace the Unit architectures.
 
 ## Implementation
 

@@ -7,3 +7,7 @@ site/
 .env
 .thesys/local/
 .thesys-workspace/
+
+build/
+dist/
+*.egg-info/

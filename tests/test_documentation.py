@@ -19,6 +19,7 @@ def test_docs_build_generates_static_navigation(tmp_path):
     assert manifest['artifact_count'] >= 2
     html=(out/'index.html').read_text(encoding='utf-8')
     assert 'Engineering Context' in html
+    assert 'System Architecture Integration' in html
     assert 'Related artifacts' in html
     assert 'Questions & answers' in html
     assert 'const LIFECYCLE' in html

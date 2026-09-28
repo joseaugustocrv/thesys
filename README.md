@@ -14,7 +14,7 @@ It can operate inside Agile, Scrum, Kanban, DevOps or other delivery models.
 ```text
 Intent Input → AI Discovery → Human Answers → AI Proposal → Human Approval
 → Authoritative Intent + Context → Governance → Requirements → Clarification
-→ Specification → Acceptance → Architecture → Quality/Security/Risk
+→ Specification → Acceptance → Unit Architecture → System Architecture Integration → Quality/Security/Risk
 → Plan → Tasks → Implementation → Verification → Convergence → Release
 → Operation → Evolution → Retirement
 ```

@@ -2,7 +2,7 @@ import argparse, json, os, shlex, subprocess
 from pathlib import Path
 from thesys_engine import __version__
 from thesys_engine.methodology import load_methodology
-from thesys_engine.project import init_project,config,set_config,create_unit,unit_info,project_info,project_language,resolve_project,set_active_project,is_project,validate_project_key
+from thesys_engine.project import init_project,config,set_config,create_unit,unit_info,project_info,project_language,resolve_project,set_active_project,is_project,validate_project_key,ensure_project_within_workspace
 from thesys_engine.project_templates import load_project_templates
 from thesys_engine.gates import status,next_stage
 from thesys_engine.errors import ProjectError,ThesysError
@@ -23,9 +23,12 @@ def _workspace(path,repo):
     env=os.getenv('THESYS_WORKSPACE')
     if env: return Path(env).expanduser().resolve()
     cwd=Path(path).resolve()
+    for candidate in (cwd, *cwd.parents):
+        if candidate.name.lower() == 'thesys projects':
+            return candidate
     if (cwd/'pyproject.toml').is_file() and 'name = "thesys"' in cwd.joinpath('pyproject.toml').read_text(encoding='utf8'):
         return (cwd.parent/'Thesys Projects').resolve()
-    return cwd
+    return (cwd/'Thesys Projects').resolve()
 
 def _load_dotenv(project,extra):
     for p in (project/'.env',extra/'.env'):
@@ -114,7 +117,8 @@ def main(argv=None):
         if a.project_command=='templates':
             for k,x in sorted(load_project_templates(repo).items()): print(f'{k}\t{x.name}\t{x.description}')
             return 0
-    if a.command=='init': init_project(Path(a.path).resolve(),m,a.template,a.name,Path(a.path).name); print(f'Thesys project initialized: {Path(a.path).resolve()}'); return 0
+    if a.command=='init':
+        target=ensure_project_within_workspace(Path(a.path).resolve(),raw); init_project(target,m,a.template,a.name,target.name); set_active_project(raw,target); print(f'Thesys project initialized: {target}'); print(f'Active project: {target.name}'); return 0
     if a.command == 'docs' and a.docs_command == 'build':
         from thesys_engine.documentation import build_documentation
         docs_project=resolve_project(raw); _load_dotenv(docs_project,docs_project.parent)
@@ -164,11 +168,11 @@ def main(argv=None):
         print(f'Proposal generated: {generate(p,m,a.stage,a.unit,_provider(p,a.agent))}'); return 0
     if a.command=='proposal':
         if a.proposal_command=='list': [print(x) for x in list_proposals(p)]; return 0
-        if a.proposal_command=='show': print(json.dumps(load_proposal(p,a.stage,a.unit),ensure_ascii=False,indent=2)); return 0
+        if a.proposal_command=='show': print(json.dumps(load_proposal(p,a.stage,a.unit,m),ensure_ascii=False,indent=2)); return 0
         if a.proposal_command=='accept': print(f'Authoritative artifact created: {accept_proposal(p,m,a.stage,a.unit)}'); return 0
     if a.command=='implementation':
         if a.implementation_command=='propose': print(f'Implementation proposal generated: {propose_implementation(p,m,a.unit,_provider(p,a.agent))}'); return 0
-        if a.implementation_command=='show': print(json.dumps(read_impl_proposal(p,a.unit),ensure_ascii=False,indent=2)); return 0
+        if a.implementation_command=='show': print(json.dumps(read_impl_proposal(p,m,a.unit),ensure_ascii=False,indent=2)); return 0
         if a.implementation_command=='accept': print('Implementation applied:'); [print('- '+x) for x in accept_implementation(p,m,a.unit)]; return 0
     if a.command=='verify':
         stage=m.stage('verification'); from thesys_engine.workflow import authoritative_inputs,save_proposal
@@ -176,7 +180,7 @@ def main(argv=None):
         record(p,f'verification:{a.unit}','PASS' if result.returncode==0 else 'FAIL',related=[])
         c=_ctx(p,m,a.unit); c=GenerationContext(c.intent,c.unit,c.unit_scope,c.language,{**c.approved_artifacts,'verification_execution':output},c.answers); ai=get_agent(_provider(p,a.agent)); proposal=ai.propose_document(m,'verification',c); qs=proposal.get('questions',[])
         if result.returncode!=0: qs.append({'id':'QST-VER-001','question':'Verification command failed. Resolve the failing verification before accepting this proposal.','why':'A failed verification cannot establish conformity.','blocking':True})
-        inputs=authoritative_inputs(p,m,stage,a.unit); save_proposal(p,'verification',a.unit,ai.name,proposal['content'],qs,inputs); print(f'Verification proposal generated: {proposal_path(p,"verification",a.unit)}'); return 0 if result.returncode==0 else 1
+        inputs=authoritative_inputs(p,m,stage,a.unit); save_proposal(p,'verification',a.unit,ai.name,proposal['content'],qs,inputs,m); print(f'Verification proposal generated: {proposal_path(p,"verification",a.unit,m)}'); return 0 if result.returncode==0 else 1
     if a.command=='trace':
         data=get(p); root=data.get('artifacts',{}).get(a.artifact_id)
         if not root: print(f'Artifact not found: {a.artifact_id}'); return 1
