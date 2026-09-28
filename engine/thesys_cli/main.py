@@ -2,7 +2,7 @@ import argparse, json, os, shlex, subprocess
 from pathlib import Path
 from thesys_engine import __version__
 from thesys_engine.methodology import load_methodology
-from thesys_engine.project import init_project,config,set_config,create_unit,unit_info,project_info,resolve_project,set_active_project,is_project,validate_project_key
+from thesys_engine.project import init_project,config,set_config,create_unit,unit_info,project_info,project_language,resolve_project,set_active_project,is_project,validate_project_key
 from thesys_engine.project_templates import load_project_templates
 from thesys_engine.gates import status,next_stage
 from thesys_engine.errors import ProjectError,ThesysError
@@ -51,7 +51,7 @@ def _ctx(project,m,unit):
         if p and p.is_file() and st.get(s.id,{}).get('status') in {'approved','completed'}: approved[s.id]=read_text(p)
     from thesys_engine.project import unit_info
     from thesys_engine.workflow import _load_answers
-    return GenerationContext(approved.get('intent',''),unit,unit_info(project,unit)['scope'],m.language,approved,_load_answers(project))
+    return GenerationContext(approved.get('intent',''),unit,unit_info(project,unit)['scope'],project_language(project,m.language),approved,_load_answers(project))
 
 def main(argv=None):
     parser=argparse.ArgumentParser(prog='thesys'); parser.add_argument('--version',action='version',version=__version__); sub=parser.add_subparsers(dest='command')

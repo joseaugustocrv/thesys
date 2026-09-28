@@ -24,10 +24,15 @@ def test_openai_discovery_contract_is_structured(tmp_path):
     call=client.responses.calls[0]
     assert call['model']=='gpt-5.6-luna'
     assert call['text']['format']['type']=='json_schema'
+    assert 'Project language: en-US' in call['instructions']
+    assert 'canonical artifact structure in English' in call['instructions']
 
 def test_openai_stage_contract_returns_questions():
     payload={'content':'# Requirements\n\nProposed content. '*80,'questions':[{'id':'QST-001','question':'What is the retention target?','why':'It affects architecture.','blocking':True}]}
     client=FakeClient(payload); agent=OpenAIAgent(client); m=load_methodology(ROOT)
     from thesys_engine.agents import GenerationContext
-    result=agent.propose_document(m,'requirements',GenerationContext('intent','default','scope','en-US',{},{}))
+    result=agent.propose_document(m,'requirements',GenerationContext('intent','default','scope','pt-BR',{},{}))
     assert result['questions'][0]['blocking'] is True
+    call=client.responses.calls[0]
+    assert 'Project language: pt-BR' in call['instructions']
+    assert 'canonical artifact structure in English' in call['instructions']
