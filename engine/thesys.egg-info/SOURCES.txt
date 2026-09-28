@@ -11,6 +11,7 @@ engine/thesys_cli/main.py
 engine/thesys_engine/__init__.py
 engine/thesys_engine/agents.py
 engine/thesys_engine/changes.py
+engine/thesys_engine/documentation.py
 engine/thesys_engine/errors.py
 engine/thesys_engine/evidence.py
 engine/thesys_engine/gates.py
@@ -69,6 +70,7 @@ engine/thesys_engine/bundle/methodology/templates/verification.md
 engine/thesys_engine/bundle/methodology/workflows/README.md
 tests/test_ai_contract.py
 tests/test_change_and_safety.py
+tests/test_documentation.py
 tests/test_hierarchy.py
 tests/test_methodology.py
 tests/test_questions.py
