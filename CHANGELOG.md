@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0 - 2026-09-28
+
+### Added
+
+- Added project language configuration for generated engineering content.
+- Added language-aware AI generation while preserving canonical methodology structure.
+- Added automated coverage for project language behavior and language fallback.
+- Added consolidated HTML documentation with embedded Thesys branding/logo.
+- Added HTML documentation coverage for embedded logo rendering.
+
+### Changed
+
+- Generated engineering content now follows the configured project language.
+- Methodology structure and canonical artifact identifiers remain language-independent.
+- Improved documentation generation and HTML presentation.
+
+### Validation
+
+- Validated AI-assisted project generation using OpenAI with `pt-BR`.
+- Validated AI-assisted project generation using OpenAI with `en-US`.
+- Validated generated HTML documentation in both language configurations.
+- Validated embedded Thesys logo rendering in generated HTML.
+
 ## 0.2.1 - 2026-09-28
 
 ### Fixed

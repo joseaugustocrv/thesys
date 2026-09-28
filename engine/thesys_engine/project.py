@@ -235,6 +235,12 @@ def config(project):
     return _read_simple_yaml(p)
 
 
+def project_language(project, fallback="en-US"):
+    """Return the effective language configured for a project."""
+    value=config(project).get("language")
+    return value.strip() if value and value.strip() else fallback
+
+
 def set_config(project,key,value):
     c=config(project); c[key]=value; write_text(project/".thesys"/"config.yaml", _write_yaml(c))
 
