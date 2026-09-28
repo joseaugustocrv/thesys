@@ -91,6 +91,7 @@ def main(argv=None):
     tr=sub.add_parser('trace'); tr.add_argument('artifact_id'); tr.add_argument('--path',default='.')
     ev=sub.add_parser('evidence'); evs=ev.add_subparsers(dest='evidence_command'); p=evs.add_parser('record'); p.add_argument('subject'); p.add_argument('result'); p.add_argument('--type',default='verification'); p.add_argument('--source',default='cli'); p.add_argument('--scope',default=''); p.add_argument('--related',default=''); p.add_argument('--path',default='.')
     ch=sub.add_parser('change'); chs=ch.add_subparsers(dest='change_command'); p=chs.add_parser('create'); p.add_argument('unit'); p.add_argument('title'); p.add_argument('description'); p.add_argument('--path',default='.'); p=chs.add_parser('impact'); p.add_argument('change_id'); p.add_argument('--path',default='.')
+    d=sub.add_parser('docs'); ds=d.add_subparsers(dest='docs_command'); p=ds.add_parser('build'); p.add_argument('--output'); p.add_argument('--open',dest='open_browser',action='store_true'); p.add_argument('--path',default='.');
     c=sub.add_parser('config'); cs=c.add_subparsers(dest='config_command'); p=cs.add_parser('get'); p.add_argument('--path',default='.'); p=cs.add_parser('set'); p.add_argument('key'); p.add_argument('value'); p.add_argument('--path',default='.')
 
     a=parser.parse_args(argv); repo=Path(__file__).resolve().parents[2];
@@ -114,6 +115,10 @@ def main(argv=None):
             for k,x in sorted(load_project_templates(repo).items()): print(f'{k}\t{x.name}\t{x.description}')
             return 0
     if a.command=='init': init_project(Path(a.path).resolve(),m,a.template,a.name,Path(a.path).name); print(f'Thesys project initialized: {Path(a.path).resolve()}'); return 0
+    if a.command == 'docs' and a.docs_command == 'build':
+        from thesys_engine.documentation import build_documentation
+        docs_project=resolve_project(raw); _load_dotenv(docs_project,docs_project.parent)
+        print(f'Documentation generated: {build_documentation(docs_project, a.output, a.open_browser)}'); return 0
     if a.command in {'status','validate','next','intent','discovery','question','unit','generate','proposal','implementation','verify','trace','evidence','change','config'}:
         p=resolve_project(raw); _load_dotenv(p,p.parent)
     else: p=None
