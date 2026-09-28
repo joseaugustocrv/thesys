@@ -54,6 +54,30 @@ def proposal_questions(project,proposal):
     return pending
 
 def _artifact_path(m,project,stage,unit): return m.artifact_path(project,stage,stage_unit(m,stage,unit))
+
+def _materialize_authoritative_content(content):
+    """Normalize proposal status metadata at the human-approval boundary.
+
+    Proposal content is otherwise preserved byte-for-byte apart from the final
+    newline. Only explicit status metadata is changed; narrative text is not
+    rewritten, avoiding accidental changes to technical content.
+    """
+    lines=[]
+    for line in content.splitlines():
+        stripped=line.strip()
+        if stripped.casefold().startswith('**status:**'):
+            value=stripped[len('**status:**'):].strip().casefold()
+            if value in {'draft','proposed','non-authoritative','non authoritative'}:
+                line='**Status:** Authoritative'
+        elif stripped.casefold().startswith('status:'):
+            value=stripped[len('status:'):].strip().casefold()
+            if value in {'draft','proposed','non-authoritative','non authoritative'}:
+                line='Status: Authoritative'
+        elif stripped.casefold().startswith('**status da proposta:**'):
+            line='**Status da proposta:** Autoritativa.'
+        lines.append(line)
+    return '\n'.join(lines).rstrip()+'\n'
+
 def authoritative_inputs(project,m,stage,unit):
     data={}
     for dep_id in stage.depends_on:
@@ -78,7 +102,7 @@ def accept_proposal(project,m,stage_id,unit="default"):
     if not p.get("content","").strip(): raise ProjectError("Proposal has no content.")
     target=_artifact_path(m,project,stage,unit)
     if not target: raise ProjectError(f"Stage '{stage_id}' is executable and must use its execution command.")
-    target.parent.mkdir(parents=True,exist_ok=True); write_text(target,p["content"].rstrip()+"\n")
+    target.parent.mkdir(parents=True,exist_ok=True); write_text(target,_materialize_authoritative_content(p["content"]))
     from .gates import approve
     approve(project,m,stage_id,unit,proposal_id=p["proposal_id"])
     p["status"]="accepted"; p["accepted_at"]=datetime.now(timezone.utc).isoformat(); write_text(proposal_path(project,stage_id,unit),json.dumps(p,ensure_ascii=False,indent=2)+"\n")
