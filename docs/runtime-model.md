@@ -21,9 +21,10 @@ Every AI proposal carries:
 - creation timestamp;
 - proposed content;
 - questions and blocking state;
+- durable clarification history, including answered question, human answer and proposal context;
 - acceptance state.
 
-Changing an answer or an upstream authoritative artifact invalidates the proposal and forces regeneration.
+Changing an answer or an upstream authoritative artifact invalidates the proposal and forces regeneration. Regeneration carries the clarification history forward and must not recreate an answered clarification under different wording. A human declaration that information is not yet known remains explicit uncertainty; it is not converted into a new blocking question for the same information category.
 
 ## Execution contract
 
@@ -47,7 +48,7 @@ System
     └── Observability
 ```
 
-Project-level approvals are inherited by child units; unit-specific context and downstream engineering remain independently controlled.
+Project-level approvals are inherited by child units; unit-specific context and downstream engineering remain independently controlled. Once child Units exist, `default` is a container and does not receive unit-scoped lifecycle artifacts.
 
 ## Change propagation
 

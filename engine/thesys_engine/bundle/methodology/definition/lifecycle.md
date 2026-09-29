@@ -2,7 +2,7 @@
 thesys:
   schema: "4"
   methodology: "thesys-core"
-  version: "0.2.0"
+  version: "0.3.1"
   language: "en-US"
 lifecycle:
   stages:
@@ -31,7 +31,7 @@ lifecycle:
       artifact: engineering/governance/governance.md
       template: methodology/templates/governance.md
       approval: required
-      depends_on: [intent, context]
+      depends_on: [intent]
       action: document
       config:
         artifact_prefix: GOV
@@ -210,11 +210,23 @@ lifecycle:
     human_may_only_approve_existing_ai_proposal: true
     changed_authoritative_artifact_invalidates_downstream: true
     unresolved_questions_block_affected_gate: true
+    question_blocking:
+      model_decides: true
+      blocking_definition: "The answer is necessary to approve or validly produce the current stage, or the decision cannot reasonably be deferred to a later stage."
+      non_blocking_definition: "The information can legitimately be resolved later without invalidating the current stage."
+      unresolved_blocking_questions_stop_progression: true
     evidence_required_for_verification: true
     exceptions_require_explicit_risk_acceptance: true
     engineering_units_control_complexity: true
     default_unit_becomes_container_when_children_exist: true
     system_architecture_synthesizes_unit_architectures: true
+    templates_define_artifact_structure: true
+    agents_generate_section_content_only: true
+    localization_is_structural_not_post_processed: true
+    generated_language_validation_rejects_invalid_output: true
+    clarification_question_identity_is_runtime_owned: true
+    clarification_question_ids_are_project_wide_and_canonical: true
+    agents_must_not_assign_clarification_question_ids: true
     utf8: true
     blocking_markers: ["Status: Open", "BLOCKED", "TODO:DECISION"]
     implementation:

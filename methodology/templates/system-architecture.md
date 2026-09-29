@@ -49,7 +49,3 @@ integration concerns discovered while synthesizing the approved Unit architectur
 | Unit / Requirement | System Component or Boundary | Verification |
 | --- | --- | --- |
 | [Reference] | [Component / Boundary] | [Verification] |
-
-## Architecture status
-
-**Status:** Draft

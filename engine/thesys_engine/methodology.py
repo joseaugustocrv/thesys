@@ -93,9 +93,23 @@ class Methodology:
     def execution_path(self, project, stage, unit="default"):
         return project / ".thesys" / "executions" / f"{stage.id}-{unit}.json"
 
+def _resolve_methodology_root(repo: Path) -> Path:
+    """Resolve source-tree or installed-package methodology resources."""
+    candidates = (
+        repo,
+        repo / "bundle",
+        repo / "thesys_engine" / "bundle",
+    )
+    for root in candidates:
+        if (root / "methodology" / "definition" / "lifecycle.md").is_file():
+            return root
+    searched = ", ".join(str(root / "methodology" / "definition" / "lifecycle.md") for root in candidates)
+    raise MethodologyError(f"Methodology definition not found. Searched: {searched}")
+
+
 def load_methodology(repo: Path) -> Methodology:
-    definition=repo/"methodology"/"definition"/"lifecycle.md"
-    if not definition.is_file(): raise MethodologyError(f"Methodology definition not found: {definition}")
+    root = _resolve_methodology_root(repo)
+    definition = root / "methodology" / "definition" / "lifecycle.md"
     data=parse_front_matter(read_text(definition)); meta=data.get("thesys",{}); lc=data.get("lifecycle",{})
     stages=[]
     for raw in lc.get("stages",[]):
@@ -109,4 +123,4 @@ def load_methodology(repo: Path) -> Methodology:
             if d not in ids: raise MethodologyError(f"Stage {s.id} depends on unknown stage {d}.")
     catalog_path=repo/"methodology"/"definition"/"catalog.json"
     catalog=json.loads(read_text(catalog_path)) if catalog_path.is_file() else {}
-    return Methodology(str(meta.get("methodology","thesys")),str(meta.get("version","0")),str(meta.get("language","en-US")),repo,definition,tuple(stages),dict(lc.get("rules",{})),catalog)
+    return Methodology(str(meta.get("methodology","thesys")),str(meta.get("version","0")),str(meta.get("language","en-US")),root,definition,tuple(stages),dict(lc.get("rules",{})),catalog)

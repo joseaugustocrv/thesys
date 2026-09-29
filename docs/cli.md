@@ -14,41 +14,66 @@ Then provide the human Intent:
 thesys intent create "Create a personal finance platform for managing income, expenses, budgets, financial indicators, bank transaction imports, alerts, notifications, and secure authentication."
 ```
 
-## AI discovery
+## AI-driven progression
+
+The normal workflow is state-driven. After the human Intent is created, `thesys next` identifies the first action whose dependencies are satisfied and, when that action is an AI proposal, generates it automatically using the configured provider.
 
 ```powershell
-thesys discovery propose
-thesys discovery show
-thesys question list
+thesys next
 ```
 
-If the AI asks a blocking question:
+The command never silently approves an artifact. It can:
+
+- generate the next AI proposal when all declared dependencies are current;
+- stop for human review when a current proposal is waiting for approval;
+- stop for blocking questions or stale proposals;
+- execute the configured Verification action when its dependencies are current;
+- report completion when the selected lifecycle scope is fully current.
+
+The explicit lower-level commands remain available for advanced workflows, automation, troubleshooting and provider overrides.
+
+### Discovery
+
+Provide the human Intent first:
 
 ```powershell
-thesys question answer QST-001 "The platform must support ..."
-thesys discovery propose
+thesys intent create "Create a personal finance platform..."
+thesys next
 ```
 
-Only when the proposal is complete:
+`next` generates the discovery proposal. If the AI raises a blocking question, answer it and run `thesys next` again; the proposal is regenerated only after the human answer changes its inputs. Discovery acceptance remains explicit:
 
 ```powershell
 thesys discovery accept
 ```
 
-This creates the authoritative Intent and Engineering Context in one explicit human approval of the AI discovery proposal.
+Discovery approval establishes the authoritative Intent and the initial Engineering Context together.
 
-## Engineering stages
+### Engineering Units
 
-After Discovery, the standard v0.1.0 engineering sequence is:
+Once the project-level discovery/governance baseline is current, `thesys next` automatically asks the configured AI provider to propose Engineering Units. The proposal is non-authoritative and must be explicitly accepted:
+
+```powershell
+thesys next
+thesys unit proposal accept
+```
+
+The normal workflow therefore does not require the user to remember `unit propose`. The explicit `unit propose` command remains available for advanced/manual workflows.
+
+Engineering Units control complexity. A small project may remain on the default system unit; when child Units are introduced, unit-scoped lifecycle work moves to those Units and the default becomes the project/system container.
+
+### Engineering stages
+
+After the structural setup, the methodology's dependency graph drives progression automatically. For unit-scoped phases, `next` plans the phase as a batch: it generates proposals for all applicable Engineering Units, keeps each proposal independently persisted, and blocks phase approval until all blocking clarifications are resolved:
 
 ```text
-Context → Governance → Requirements → Clarification → Specification
+Context → Governance → Engineering Units → Requirements → Clarification → Specification
 → Acceptance → Unit Architecture → System Architecture Integration
 → Quality → Security → Risk → Plan → Tasks → Implementation → Verification → Convergence → Release
 → Operation → Evolution → Retirement
 ```
 
-For document stages, the normal proposal pattern is:
+For ordinary document stages, the equivalent explicit commands remain:
 
 ```powershell
 thesys generate requirements
@@ -56,17 +81,17 @@ thesys proposal show requirements
 thesys proposal accept requirements
 ```
 
-The same `generate → proposal show → proposal accept` pattern applies to the
-other document stages. If the AI raises blocking questions, answer them and
-regenerate the proposal before approval. A question that is only a downstream
-implementation, verification, release or operational condition does not by
-itself block approval of the current baseline.
+`thesys next` is the recommended path; the explicit commands are retained as lower-level controls. Human approval remains required before progression, and an authoritative upstream change invalidates dependent artifacts.
 
-There is deliberately no general `stage approve` command. Approval without a current AI proposal is invalid by design.
+### Continuous documentation
 
-### Engineering Units
+The project documentation is a generated projection of the current Thesys state. Meaningful lifecycle mutations refresh `.thesys/docs/index.html` automatically. It can also be rebuilt explicitly:
 
-Engineering Units control complexity. A small project can use the default system unit directly. When child Units are introduced, unit-scoped artifacts are produced independently for those Units. The default system unit becomes a project/system container for unit-scoped work. After each relevant Unit reaches Architecture, `system-architecture` synthesizes the approved Unit architectures into `engineering/architecture/system-architecture.md`. This system-level artifact does not replace the Unit architectures.
+```powershell
+thesys docs build
+```
+
+The HTML documentation includes lifecycle progress, authoritative artifacts, current non-authoritative proposals, proposal questions, approval state, clarification history, evidence and traceability context where available. Proposals are explicitly distinguished from authoritative artifacts and are never treated as approved merely because they appear in the site.
 
 ## Implementation
 

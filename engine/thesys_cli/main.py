@@ -5,9 +5,10 @@ from thesys_engine.methodology import load_methodology
 from thesys_engine.project import init_project,config,set_config,create_unit,unit_info,project_info,project_language,resolve_project,set_active_project,is_project,validate_project_key,ensure_project_within_workspace
 from thesys_engine.project_templates import load_project_templates
 from thesys_engine.gates import status,next_stage
+from thesys_engine.orchestration import next_action
 from thesys_engine.errors import ProjectError,ThesysError
 from thesys_engine.intents import create_intent,propose_discovery,read_discovery_proposal,accept_discovery
-from thesys_engine.workflow import answer_question,load_proposal,proposal_questions,accept_proposal,proposal_path
+from thesys_engine.workflow import answer_question,load_proposal,proposal_questions,proposal_is_stale,accept_proposal,proposal_path,authoritative_inputs,save_proposal
 from thesys_engine.proposals import generate,list_proposals
 from thesys_engine.implementation import propose as propose_implementation,accept as accept_implementation,read_impl_proposal
 from thesys_engine.agents import get_agent,GenerationContext
@@ -53,8 +54,43 @@ def _ctx(project,m,unit):
         p=m.artifact_path(project,s,stage_unit(m,s,unit))
         if p and p.is_file() and st.get(s.id,{}).get('status') in {'approved','completed'}: approved[s.id]=read_text(p)
     from thesys_engine.project import unit_info
-    from thesys_engine.workflow import _load_answers
-    return GenerationContext(approved.get('intent',''),unit,unit_info(project,unit)['scope'],project_language(project,m.language),approved,_load_answers(project))
+    from thesys_engine.workflow import _load_answers, _clarification_history_for
+    info=unit_info(project,unit)
+    return GenerationContext(approved.get('intent',''),unit,info['scope'],project_language(project,m.language),approved,_load_answers(project),{},info.get('type','system'),info.get('parent'),tuple(info.get('dependencies',[])),_clarification_history_for(project,'verification',unit))
+
+def _refresh_docs(project):
+    """Refresh the project documentation projection after meaningful state changes."""
+    from thesys_engine.documentation import build_documentation
+    return build_documentation(project)
+
+
+def _print_next_action(action):
+    if action.kind == "human_input":
+        print(f"Next action: {action.reason}")
+    elif action.kind in {"human_review", "human_review_units"}:
+        target = action.stage or "engineering-units"
+        suffix = f" [{action.unit}]" if action.stage and action.unit != "default" else ""
+        print(f"Next action: human review of {target}{suffix}")
+        if action.proposal:
+            print(f"Proposal: {action.proposal}")
+    elif action.kind == "answer_questions":
+        target = action.stage or "engineering-units"
+        suffix = f" [{action.unit}]" if action.stage and action.unit != "default" else ""
+        print(f"Next action: answer blocking questions for {target}{suffix}")
+        if action.proposal:
+            print(f"Proposal: {action.proposal}")
+    elif action.kind in {"propose_phase", "regenerate_phase", "human_review_phase", "answer_phase_questions"}:
+        print(f"Next action: {action.kind.replace('_', ' ')} for phase {action.stage}.")
+    elif action.kind == "regenerate":
+        print(f"Next action: regenerate {action.stage} proposal for {action.unit}.")
+    elif action.kind == "blocked":
+        print(f"Next action blocked: {action.reason}")
+    elif action.kind == "complete":
+        print("Lifecycle complete: no pending action.")
+    else:
+        print(f"Next action: {action.kind} {action.stage or ''} {action.unit}".strip())
+    return action
+
 
 def main(argv=None):
     parser=argparse.ArgumentParser(prog='thesys'); parser.add_argument('--version',action='version',version=__version__); sub=parser.add_subparsers(dest='command')
@@ -126,14 +162,22 @@ def main(argv=None):
     if a.command in {'status','validate','next','intent','discovery','question','unit','generate','proposal','implementation','verify','trace','evidence','change','config'}:
         p=resolve_project(raw); _load_dotenv(p,p.parent)
     else: p=None
-    if a.command=='intent' and a.intent_command=='create': print(f'Intent input created: {create_intent(p,a.statement,a.outcome,a.owner,a.file,m)}'); return 0
+    if a.command=='intent' and a.intent_command=='create':
+        result=create_intent(p,a.statement,a.outcome,a.owner,a.file,m); _refresh_docs(p)
+        print(f'Intent input created: {result}'); return 0
     if a.command=='discovery':
-        if a.discovery_command=='propose': print(f'Discovery proposal generated: {propose_discovery(p,m,_provider(p,a.agent))}'); return 0
+        if a.discovery_command=='propose':
+            result=propose_discovery(p,m,_provider(p,a.agent)); _refresh_docs(p)
+            print(f'Discovery proposal generated: {result}'); return 0
         if a.discovery_command=='show':
             data,body=read_discovery_proposal(p); print(json.dumps(data,ensure_ascii=False,indent=2)); print('\n--- PROPOSAL ---\n'); print(json.dumps(body,ensure_ascii=False,indent=2)); return 0
-        if a.discovery_command=='accept': print(f'Discovery accepted: {accept_discovery(p,m)[0]}'); return 0
+        if a.discovery_command=='accept':
+            result=accept_discovery(p,m); _refresh_docs(p)
+            print(f'Discovery accepted: {result[0]}'); return 0
     if a.command=='question':
-        if a.question_command=='answer': answer_question(p,a.id,a.answer); print(f'Question answered: {a.id}'); return 0
+        if a.question_command=='answer':
+            answer_question(p,a.id,a.answer); _refresh_docs(p)
+            print(f'Question answered: {a.id}'); return 0
         if a.question_command=='list':
             from thesys_engine.workflow import _load_answers
             answers=_load_answers(p)
@@ -146,49 +190,148 @@ def main(argv=None):
     if a.command=='unit':
         if a.unit_command=='create':
             if status(p,m)['intent']['status']!='approved': raise ProjectError('Engineering units can only be created after the authoritative Intent is approved.')
-            print(f'Engineering unit created: {create_unit(p,a.key,a.name,a.scope,a.type,a.parent,m)}'); return 0
+            result=create_unit(p,a.key,a.name,a.scope,a.type,a.parent,m); _refresh_docs(p)
+            print(f'Engineering unit created: {result}'); return 0
         if a.unit_command=='list':
             for f in sorted((p/'.thesys/units').glob('*.json')): x=json.loads(read_text(f)); print(f"{f.stem}\t{x.get('type')}\t{x.get('parent')}")
             return 0
         if a.unit_command=='propose':
             from thesys_engine.unit_proposals import generate_unit_proposal
-            print(f'Engineering unit proposal generated: {generate_unit_proposal(p,_provider(p,a.agent))}'); return 0
+            result=generate_unit_proposal(p,_provider(p,a.agent),m); _refresh_docs(p)
+            print(f'Engineering unit proposal generated: {result}'); return 0
         if a.unit_command=='proposal' and a.unit_proposal_command=='accept':
             from thesys_engine.unit_proposals import accept_unit_proposal
-            for x in accept_unit_proposal(p,m): print(f'Engineering unit created: {x}')
+            created=accept_unit_proposal(p,m); _refresh_docs(p)
+            for x in created: print(f'Engineering unit created: {x}')
             return 0
     if a.command in {'status','next','validate'}:
         if a.command=='status':
             st=status(p,m,a.unit); [print(f'{s.id}: {st[s.id]["status"]}') for s in m.stages]; return 0
         if a.command=='next':
-            s=next_stage(p,m,a.unit); print(f'Next lifecycle stage: {s.id if s else "none"}'); return 0
+            action=next_action(p,m,a.unit)
+            if action.kind == 'propose_discovery':
+                result=propose_discovery(p,m,_provider(p,None)); _refresh_docs(p)
+                print(f'Discovery proposal generated: {result}')
+                return 0
+            if action.kind == 'regenerate':
+                if action.stage == 'intent':
+                    result=propose_discovery(p,m,_provider(p,None))
+                    _refresh_docs(p)
+                    print(f'Discovery proposal regenerated: {result}')
+                else:
+                    result=generate(p,m,action.stage,action.unit,_provider(p,None))
+                    _refresh_docs(p)
+                    print(f'Proposal regenerated: {result}')
+                return 0
+            if action.kind == 'propose_units':
+                from thesys_engine.unit_proposals import generate_unit_proposal
+                result=generate_unit_proposal(p,_provider(p,None),m); _refresh_docs(p)
+                print(f'Engineering unit proposal generated: {result}')
+                return 0
+            if action.kind in {'propose_phase','regenerate_phase'}:
+                from thesys_engine.project import work_units
+                stage=m.stage(action.stage)
+                targets=['default'] if stage.config.get('scope') == 'project' else [u['key'] for u in work_units(p)]
+                generated=[]
+                for target in targets:
+                    try:
+                        existing=load_proposal(p,action.stage,target,m)
+                    except ProjectError:
+                        existing=None
+                    if existing:
+                        stale = existing.get('status') == 'needs_regeneration' or proposal_is_stale(p,m,action.stage,target,existing)
+                        # Phase regeneration is selective: regenerate only the
+                        # proposals whose authoritative inputs changed. Other
+                        # Unit proposals are still current and must retain their
+                        # proposal IDs, questions and clarification history.
+                        if not stale:
+                            continue
+                    result=generate(p,m,action.stage,target,_provider(p,None))
+                    generated.append(result)
+                _refresh_docs(p)
+                verb='regenerated' if action.kind == 'regenerate_phase' else 'generated'
+                print(f'Phase {action.stage} proposals {verb}:')
+                for result in generated: print(f'- {result}')
+                return 0
+            if action.kind == 'propose':
+                result=generate(p,m,action.stage,action.unit,_provider(p,None)); _refresh_docs(p)
+                print(f'Proposal generated: {result}')
+                return 0
+            if action.kind == 'propose_implementation':
+                result=propose_implementation(p,m,action.unit,_provider(p,None)); _refresh_docs(p)
+                print(f'Implementation proposal generated: {result}')
+                return 0
+            if action.kind == 'verify':
+                stage=m.stage('verification')
+                command=stage.config.get('command','python -m pytest -q')
+                result=subprocess.run(shlex.split(command),cwd=p,text=True,capture_output=True)
+                output=result.stdout or result.stderr
+                record(p,f'verification:{action.unit}','PASS' if result.returncode==0 else 'FAIL',related=[])
+                c=_ctx(p,m,action.unit); c=GenerationContext(c.intent,c.unit,c.unit_scope,c.language,{**c.approved_artifacts,'verification_execution':output},c.answers,c.related_units,c.unit_type,c.unit_parent,c.unit_dependencies,c.clarification_history)
+                ai=get_agent(_provider(p,None)); proposal=ai.propose_document(m,'verification',c); qs=proposal.get('questions',[])
+                if result.returncode!=0:
+                    qs.append({'id':'QST-VER-001','question':'Verification command failed. Resolve the failing verification before accepting this proposal.','why':'A failed verification cannot establish conformity.','blocking':True})
+                from thesys_engine.templates import render_template
+                from thesys_engine.proposals import _validate_generated_content, _validate_artifact_refs
+                rendered_verification=render_template(m,'verification',proposal.get('sections',{}),c.language,action.unit)
+                rendered_verification=_validate_generated_content(rendered_verification,c.language); rendered_verification=_validate_artifact_refs(p,m,rendered_verification)
+                inputs=authoritative_inputs(p,m,stage,action.unit); save_proposal(p,'verification',action.unit,ai.name,rendered_verification,qs,inputs,m); _refresh_docs(p)
+                print(f'Verification proposal generated: {proposal_path(p,"verification",action.unit,m)}')
+                return 0 if result.returncode==0 else 1
+            _print_next_action(action); return 0
         from thesys_engine.validate import validate
         findings=validate(p,m); [print('ERROR: '+x) for x in findings]; print('Thesys project validation passed.' if not findings else 'Thesys project validation failed.'); return 0 if not findings else 1
     if a.command=='generate':
-        print(f'Proposal generated: {generate(p,m,a.stage,a.unit,_provider(p,a.agent))}'); return 0
+        result=generate(p,m,a.stage,a.unit,_provider(p,a.agent)); _refresh_docs(p)
+        print(f'Proposal generated: {result}'); return 0
     if a.command=='proposal':
         if a.proposal_command=='list': [print(x) for x in list_proposals(p)]; return 0
-        if a.proposal_command=='show': print(json.dumps(load_proposal(p,a.stage,a.unit,m),ensure_ascii=False,indent=2)); return 0
-        if a.proposal_command=='accept': print(f'Authoritative artifact created: {accept_proposal(p,m,a.stage,a.unit)}'); return 0
+        if a.proposal_command=='show':
+            if a.stage == 'engineering-units':
+                from thesys_engine.unit_proposals import read_proposal
+                data, _ = read_proposal(p)
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+                return 0
+            print(json.dumps(load_proposal(p,a.stage,a.unit,m),ensure_ascii=False,indent=2)); return 0
+        if a.proposal_command=='accept':
+            result=accept_proposal(p,m,a.stage,a.unit); _refresh_docs(p)
+            if a.stage == 'engineering-units':
+                print('Engineering Units created:')
+                for item in result:
+                    print(f'- {item}')
+            else:
+                print(f'Authoritative artifact created: {result}')
+            return 0
     if a.command=='implementation':
-        if a.implementation_command=='propose': print(f'Implementation proposal generated: {propose_implementation(p,m,a.unit,_provider(p,a.agent))}'); return 0
+        if a.implementation_command=='propose':
+            result=propose_implementation(p,m,a.unit,_provider(p,a.agent)); _refresh_docs(p)
+            print(f'Implementation proposal generated: {result}'); return 0
         if a.implementation_command=='show': print(json.dumps(read_impl_proposal(p,m,a.unit),ensure_ascii=False,indent=2)); return 0
-        if a.implementation_command=='accept': print('Implementation applied:'); [print('- '+x) for x in accept_implementation(p,m,a.unit)]; return 0
+        if a.implementation_command=='accept':
+            result=accept_implementation(p,m,a.unit); _refresh_docs(p)
+            print('Implementation applied:'); [print('- '+x) for x in result]; return 0
     if a.command=='verify':
-        stage=m.stage('verification'); from thesys_engine.workflow import authoritative_inputs,save_proposal
+        stage=m.stage('verification')
         command=stage.config.get('command','python -m pytest -q'); result=subprocess.run(shlex.split(command),cwd=p,text=True,capture_output=True); output=result.stdout or result.stderr
         record(p,f'verification:{a.unit}','PASS' if result.returncode==0 else 'FAIL',related=[])
-        c=_ctx(p,m,a.unit); c=GenerationContext(c.intent,c.unit,c.unit_scope,c.language,{**c.approved_artifacts,'verification_execution':output},c.answers); ai=get_agent(_provider(p,a.agent)); proposal=ai.propose_document(m,'verification',c); qs=proposal.get('questions',[])
+        c=_ctx(p,m,a.unit); c=GenerationContext(c.intent,c.unit,c.unit_scope,c.language,{**c.approved_artifacts,'verification_execution':output},c.answers,c.related_units,c.unit_type,c.unit_parent,c.unit_dependencies,c.clarification_history); ai=get_agent(_provider(p,a.agent)); proposal=ai.propose_document(m,'verification',c); qs=proposal.get('questions',[])
         if result.returncode!=0: qs.append({'id':'QST-VER-001','question':'Verification command failed. Resolve the failing verification before accepting this proposal.','why':'A failed verification cannot establish conformity.','blocking':True})
-        inputs=authoritative_inputs(p,m,stage,a.unit); save_proposal(p,'verification',a.unit,ai.name,proposal['content'],qs,inputs,m); print(f'Verification proposal generated: {proposal_path(p,"verification",a.unit,m)}'); return 0 if result.returncode==0 else 1
+        from thesys_engine.templates import render_template
+        from thesys_engine.proposals import _validate_generated_content, _validate_artifact_refs
+        rendered_verification=render_template(m,'verification',proposal.get('sections',{}),c.language,a.unit)
+        rendered_verification=_validate_generated_content(rendered_verification,c.language); rendered_verification=_validate_artifact_refs(p,m,rendered_verification)
+        inputs=authoritative_inputs(p,m,stage,a.unit); save_proposal(p,'verification',a.unit,ai.name,rendered_verification,qs,inputs,m); _refresh_docs(p); print(f'Verification proposal generated: {proposal_path(p,"verification",a.unit,m)}'); return 0 if result.returncode==0 else 1
     if a.command=='trace':
         data=get(p); root=data.get('artifacts',{}).get(a.artifact_id)
         if not root: print(f'Artifact not found: {a.artifact_id}'); return 1
         print(f"{a.artifact_id}: {root.get('type')} [{root.get('status')}] {root.get('path')}"); [print(f"  {e['relation']} -> {e['target']}") for e in graph(p,a.artifact_id)]; return 0
     if a.command=='evidence' and a.evidence_command=='record':
-        print(f"Evidence recorded: {record(p,a.subject,a.result,a.type,a.source,a.scope,related=[x for x in a.related.split(',') if x])}"); return 0
+        result=record(p,a.subject,a.result,a.type,a.source,a.scope,related=[x for x in a.related.split(',') if x]); _refresh_docs(p)
+        print(f"Evidence recorded: {result}"); return 0
     if a.command=='change':
-        if a.change_command=='create': print(f'Change created: {create_change(p,a.title,a.description,a.unit)}'); return 0
+        if a.change_command=='create':
+            result=create_change(p,a.title,a.description,a.unit); _refresh_docs(p)
+            print(f'Change created: {result}'); return 0
         if a.change_command=='impact': [print(f"{e['source']} --{e['relation']}--> {e['target']}") for e in impact(p,a.change_id)]; return 0
     if a.command=='config':
         if a.config_command=='get': [print(f'{k}={v}') for k,v in config(p).items()]

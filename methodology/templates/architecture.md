@@ -10,7 +10,7 @@ Describe the system context and major boundaries.
 
 ## Components
 
-### COMP-001 — [Component]
+### COMP-001 — Component definition
 
 **Responsibility:** [Responsibility]
 
@@ -49,7 +49,3 @@ Link to decision records where needed.
 | Requirement | Component | Interface | Verification |
 | --- | --- | --- | --- |
 | REQ-001 | COMP-001 | [Interface] | [TST] |
-
-## Architecture status
-
-**Status:** Draft

@@ -16,11 +16,11 @@ Identify the people, systems, or organizations affected.
 
 ### In scope
 
-- [INT-001] [Item]
+- [Item]
 
 ### Out of scope
 
-- [INT-002] [Item]
+- [Item]
 
 ## Success signals
 
@@ -34,19 +34,3 @@ constraints.
 ## Assumptions
 
 Record assumptions that could change the intended solution.
-
-## Open questions
-
-Record questions that must be resolved before dependent decisions.
-
-| ID | Question | Owner | Status |
-| --- | --- | --- | --- |
-| QST-001 | [Question] | [Owner] | Open |
-
-## Intent status
-
-**Status:** Draft
-
-**Owner:** [Owner]
-
-**Version:** 0.1

@@ -6,7 +6,7 @@ Explain how the approved specification and architecture will be implemented.
 
 ## Workstreams
 
-### PLAN-001 — [Workstream]
+### PLAN-001 — Workstream
 
 **Outcome:** [Outcome]
 
@@ -40,7 +40,3 @@ applicable.
 | Requirement | Workstream | Task | Verification |
 | --- | --- | --- | --- |
 | REQ-001 | PLAN-001 | TSK-001 | TST-001 |
-
-## Plan status
-
-**Status:** Draft

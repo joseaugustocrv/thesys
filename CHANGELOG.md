@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Removed lifecycle metadata (status, proposal authority and artifact placeholder version/owner fields) from generated artifact prose. Lifecycle state remains represented by Thesys runtime metadata and the registry.
+- Approval now materializes the approved proposal content without rewriting its document body.
+
+
+## 0.4.0 — clarification and documentation convergence
+
+- Clarification-question identity is now assigned by the runtime using project-wide canonical `QST-NNN` identifiers; AI schemas no longer accept model-assigned IDs.
+- Preserved question identity and clarification history across regeneration while preventing answered decisions from being reintroduced.
+- Structured generation contracts now keep document structure, localization and generated content as separate responsibilities.
+- Installed wheels resolve bundled methodology resources correctly without relying on the source repository layout.
+
+- Preserve answered clarification history across AI proposal regeneration.
+- Prevent answered questions from returning under different wording or identifiers.
+- Generate unit-scoped lifecycle proposals as a phase batch while retaining independent proposal state per Unit.
+- Expose current non-authoritative proposals and clarification history in generated HTML documentation.
+- Improve pt-BR generation by localizing human-readable headings and normative language.
+- Write generated JSON as UTF-8 without a BOM, with explicit UTF-8 decoding for Windows compatibility.
+
+
 
 ## 0.4.0 - 2026-09-28
 
@@ -13,9 +36,15 @@
 - Unit-scoped lifecycle stages remain independent, while System Architecture provides an integrated project-level view before Quality, Security and Risk.
 - Registry artifact identifiers now consistently use methodology-defined prefixes for every lifecycle stage.
 - Updated methodology, templates, CLI documentation, bundled methodology and tests to reflect the revised model.
+- `thesys next` now orchestrates the lifecycle by automatically proposing the next ready AI activity without bypassing human approval.
+- Engineering Unit decomposition can explicitly decline to split a small project, preserving the default system unit.
+- Project documentation is refreshed automatically after meaningful lifecycle mutations.
 
 ### Validation
-- Full automated test suite: 27 passed.
+- Full automated test suite: 31 passed.
+- End-to-end lifecycle validation completed with the deterministic provider through Retirement.
+- Multi-Unit validation completed through System Architecture Integration.
+- Wheel build and isolated installation validation completed.
 
 ## 0.3.0 - 2026-09-28
 

@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from .errors import ProjectError
 from .io import read_text,write_text
-from .workflow import can_propose,save_proposal,load_proposal,proposal_questions,authoritative_inputs,_load_answers,proposal_path
+from .workflow import can_propose,save_proposal,load_proposal,proposal_questions,authoritative_inputs,_load_answers,_clarification_history_for,proposal_path
 from .agents import get_agent,GenerationContext
 from .project import unit_info,project_language
 from .gates import status
@@ -13,7 +13,7 @@ def _context(project,m,unit):
  for s in m.stages:
   p=m.artifact_path(project,s,stage_unit(m,s,unit))
   if p and p.is_file() and st.get(s.id,{}).get('status') in {'approved','completed'}: approved[s.id]=read_text(p)
- return GenerationContext(approved.get('intent',''),unit,unit_info(project,unit)['scope'],project_language(project,m.language),approved,_load_answers(project))
+ return GenerationContext(approved.get('intent',''),unit,unit_info(project,unit)['scope'],project_language(project,m.language),approved,_load_answers(project),{},unit_info(project,unit).get('type','system'),unit_info(project,unit).get('parent'),tuple(unit_info(project,unit).get('dependencies',[])),_clarification_history_for(project,'implementation',unit))
 
 def propose(project,m,unit='default',provider='openai'):
  stage=m.stage('implementation'); can_propose(project,m,stage,unit)

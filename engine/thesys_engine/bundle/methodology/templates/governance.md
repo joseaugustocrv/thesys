@@ -14,10 +14,10 @@ Define the authority, constraints and engineering responsibilities for this unit
 
 | Responsibility | Owner | Authority |
 |---|---|---|
-| Business intent | [Owner] | Human |
-| Technical decisions | | Human |
-| Risk acceptance | | Human |
-| Release decision | | Human |
+| Business intent | [Owner] | Decisão humana |
+| Technical decisions | | Decisão humana |
+| Risk acceptance | | Decisão humana |
+| Release decision | | Decisão humana |
 
 ## Constraints and policies
 
@@ -31,7 +31,3 @@ Define the authority, constraints and engineering responsibilities for this unit
 
 Record approved exceptions as explicit artifacts. Do not use this section to
 silently waive a mandatory control.
-
-## Status
-
-Status: Draft

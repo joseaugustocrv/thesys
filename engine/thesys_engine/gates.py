@@ -71,17 +71,50 @@ def _deps_match(project, m, stage, unit, approval):
     return all(_stage_current(project, m, dep, dep_unit, cache=cache) for dep in stage.depends_on for _, dep_unit in _dependency_targets(project, m, stage, unit, dep))
 
 
+def _aggregate_unit_statuses(statuses):
+    """Collapse child-unit lifecycle states into the project/container view."""
+    values = [entry.get("status") for entry in statuses.values()]
+    if not values:
+        return "missing"
+    if all(value == "approved" for value in values):
+        return "approved"
+    if any(value == "needs_revalidation" for value in values):
+        return "needs_revalidation"
+    if any(value == "needs_regeneration" for value in values):
+        return "needs_regeneration"
+    if any(value == "blocked" for value in values):
+        return "blocked"
+    if any(value == "questions_pending" for value in values):
+        return "questions_pending"
+    if all(value == "proposed" for value in values):
+        return "proposed"
+    if all(value == "missing" for value in values):
+        return "missing"
+    return "partial"
+
+
 def status(project, m, unit="default"):
     state = _state(project)
     result = {}
     current_cache = {}
     from .workflow import proposal_path, proposal_questions
-    from .project import has_child_units
-    for s in m.stages:
+    from .project import has_child_units, work_units
+    # The default unit is the project/container view once child Engineering Units exist.
+    # Project-scoped stages are evaluated directly; unit-scoped stages are aggregated.
+    child_units = has_child_units(project)
+    if unit == "default" and child_units:
+        for s in m.stages:
+            if s.config.get("scope") == "project":
+                continue
+            child_statuses = {u["key"]: status(project, m, u["key"])[s.id] for u in work_units(project)}
+            result[s.id] = {"status": _aggregate_unit_statuses(child_statuses)}
+        # Continue below only for project-scoped stages.
+        project_stages = [s for s in m.stages if s.config.get("scope") == "project"]
+    else:
+        project_stages = []
+    stages_to_process = project_stages if unit == "default" and child_units else list(m.stages)
+    for s in stages_to_process:
         su = stage_unit(m, s, unit)
-        if unit == "default" and has_child_units(project) and s.config.get("scope") != "project":
-            result[s.id] = {"status": "not_applicable"}
-            continue
         if s.action == "discovery":
             p = m.artifact_path(project, s, "default")
             if p and p.is_file():
@@ -151,6 +184,18 @@ def approve(project, m, stage_id, unit="default", proposal_id=None):
     if not prefix: raise ProjectError(f"No artifact prefix is defined for lifecycle stage '{stage_id}'.")
     aid = allocate_id(project, prefix)
     register_artifact(project, aid, prefix, p, stage_unit(m, s, unit), status="authoritative", authority="human")
+    # Materialize lifecycle dependencies as traceability relations. The registry
+    # must expose the same dependency graph used by the gate, not only the
+    # approval fingerprint.
+    from .registry import find_artifact_id_by_path, add_relation
+    for dep_id in s.depends_on:
+        for dep_name, dep_unit in _dependency_targets(project, m, s, unit, dep_id):
+            dep_stage = m.stage(dep_name)
+            dep_path = m.artifact_path(project, dep_stage, stage_unit(m, dep_stage, dep_unit))
+            if dep_path and dep_path.is_file():
+                target_id = find_artifact_id_by_path(project, dep_path)
+                if target_id and target_id != aid:
+                    add_relation(project, aid, "depends-on", target_id)
     if s.config.get("aggregate_relation"):
         from .registry import get, add_relation
         for other_id, artifact in get(project).get("artifacts", {}).items():

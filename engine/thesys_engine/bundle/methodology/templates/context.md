@@ -32,17 +32,9 @@ and known limitations. Do not invent undocumented facts.
 
 ## Applicable standards and policies
 
-## Open questions
-
-| ID | Question | Owner | Blocking? | Status |
-|---|---|---|---|---|
-
-Status: Draft
-
 ## Governing intent
 
 Source of intent:
 `engineering/intent/intent.md`
 
 The unit must not redefine or silently diverge from the approved Intent.
-

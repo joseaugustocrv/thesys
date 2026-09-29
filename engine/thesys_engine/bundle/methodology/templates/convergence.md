@@ -18,7 +18,7 @@ requirements, specification, and verification evidence.
 
 ## Findings
 
-### FIND-001 — [Finding]
+### FIND-001 — Finding
 
 **Severity:** [Blocking / Major / Minor]
 

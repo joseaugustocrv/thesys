@@ -18,6 +18,8 @@ def test_end_to_end_from_human_intent_to_retirement(tmp_path,monkeypatch):
     assert status(tmp_path,load_methodology(ROOT))['intent']['status']=='approved'
     assert cli('generate','governance','--agent','mock')==0
     assert cli('proposal','accept','governance')==0
+    assert cli('generate','context','--agent','mock')==0
+    assert cli('proposal','accept','context')==0
     for stage in ['requirements','clarification','specification','acceptance','architecture','system-architecture','quality','security','risk','plan','tasks']:
         assert cli('generate',stage,'--agent','mock')==0
         assert cli('proposal','accept',stage)==0

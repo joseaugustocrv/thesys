@@ -26,7 +26,7 @@
 
 ## User stories
 
-### STORY-001 — [Story]
+### STORY-001 — User story
 
 **As a** [actor]
 
@@ -36,7 +36,7 @@
 
 ## Behavioral specification
 
-### BEH-001 — [Behavior]
+### BEH-001 — Behavior
 
 **Given:** [Context]
 
@@ -46,7 +46,7 @@
 
 ## Acceptance criteria
 
-### ACC-001 — [Criterion]
+### ACC-001 — Acceptance criterion
 
 **Given:** [Initial state]
 
@@ -56,7 +56,7 @@
 
 ## Business rules
 
-### BUS-001 — [Rule]
+### BUS-001 — Business rule
 
 [Rule]
 
@@ -77,15 +77,3 @@ Define logs, metrics, traces, alerts, and diagnostic information where needed.
 
 Intent → Requirements → Specification → Plan → Tasks → Implementation →
 Verification
-
-## Open questions
-
-| ID | Question | Owner | Status |
-| --- | --- | --- | --- |
-| QST-001 | [Question] | [Owner] | Open |
-
-## Specification status
-
-**Status:** Draft
-
-**Version:** 0.1

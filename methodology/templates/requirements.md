@@ -8,7 +8,7 @@
 
 ## Functional requirements
 
-### REQ-001 — [Requirement title]
+### REQ-001 — Functional requirement
 
 **Statement:** The system shall [observable behavior].
 
@@ -18,7 +18,7 @@
 
 **Source:** [Intent reference]
 
-### REQ-002 — [Requirement title]
+### REQ-002 — Functional requirement
 
 **Statement:** The system shall [observable behavior].
 
@@ -30,7 +30,7 @@
 
 ## Quality requirements
 
-### QLT-001 — [Quality attribute]
+### QLT-001 — Quality requirement
 
 **Requirement:** [Measurable or verifiable quality expectation.]
 
@@ -38,7 +38,7 @@
 
 ## Security requirements
 
-### SEC-001 — [Security requirement]
+### SEC-001 — Security requirement
 
 **Requirement:** [Security behavior or constraint.]
 
@@ -58,20 +58,8 @@
 | --- | --- | --- |
 | ASM-001 | [Assumption] | [Validation] |
 
-## Open questions
-
-| ID | Question | Owner | Status |
-| --- | --- | --- | --- |
-| QST-001 | [Question] | [Owner] | Open |
-
 ## Traceability
 
 | Requirement | Intent | Acceptance criterion | Verification |
 | --- | --- | --- | --- |
 | REQ-001 | [INT] | [ACC] | [TST] |
-
-## Status
-
-**Status:** Draft
-
-**Version:** 0.1

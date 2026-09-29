@@ -20,5 +20,3 @@
 ## Incident and problem feedback
 
 ## Operational evidence
-
-Status: Draft

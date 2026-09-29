@@ -5,5 +5,6 @@ def read_text(path: Path) -> str:
 
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    encoding = "utf-8-sig" if path.suffix.lower() in {".md", ".txt"} else "utf-8"
-    path.write_text(content.replace("\ufeff", ""), encoding=encoding)
+    # Emit standards-compliant UTF-8 without a BOM. ``read_text`` accepts both
+    # BOM and BOM-less legacy artifacts so existing projects remain readable.
+    path.write_text(content.replace("\ufeff", ""), encoding="utf-8")

@@ -53,3 +53,24 @@ Architecture is living engineering knowledge. When important requirements, const
 ## Large systems
 
 Architecture can be described at multiple levels. Higher-level views establish boundaries and shared constraints; lower-level views describe local structure. Relationships between those levels preserve context without requiring one document to describe every detail of a large system.
+
+## Template-driven document architecture
+
+Lifecycle documents have a strict separation between structure and content:
+
+```text
+Methodology template
+  ├── document title
+  ├── section hierarchy
+  └── structural labels
+          ↓
+      AI section content
+          ↓
+    schema validation
+          ↓
+   localized rendering
+          ↓
+     human proposal
+```
+
+The template owns the artifact shape. Localization resources own human-facing structural labels. The AI supplies only section content and clarification questions. This prevents generated prose from changing the lifecycle structure and removes the need for post-generation language-repair rules.

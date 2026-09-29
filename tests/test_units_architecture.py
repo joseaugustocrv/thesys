@@ -40,16 +40,16 @@ def test_large_project_uses_unit_artifacts_and_integrates_architecture(tmp_path)
     m = load_methodology(ROOT)
     assert status(tmp_path, m, 'finance')['architecture']['status'] == 'approved'
     assert status(tmp_path, m, 'inventory')['architecture']['status'] == 'approved'
-    assert status(tmp_path, m, 'default')['requirements']['status'] == 'not_applicable'
+    assert status(tmp_path, m, 'default')['requirements']['status'] == 'approved'
 
     assert cli(tmp_path, 'generate', 'system-architecture', '--agent', 'mock') == 0
-    proposal = json.loads((tmp_path / '.thesys/proposals/default/system-architecture.json').read_text(encoding='utf-8'))
+    proposal = json.loads((tmp_path / '.thesys/proposals/default/system-architecture.json').read_text(encoding='utf-8-sig'))
     assert 'architecture:finance' in proposal['content'] or 'finance' in proposal['content']
     assert cli(tmp_path, 'proposal', 'accept', 'system-architecture') == 0
 
     artifact = tmp_path / 'engineering/architecture/system-architecture.md'
     assert artifact.is_file()
-    content = artifact.read_text(encoding='utf-8')
+    content = artifact.read_text(encoding='utf-8-sig')
     assert 'Finance (finance)' in content
     assert 'Inventory (inventory)' in content
     assert '[UNIT]' not in content
@@ -89,7 +89,7 @@ def test_unit_architecture_change_invalidates_system_architecture(tmp_path):
     assert cli(tmp_path, 'proposal', 'accept', 'system-architecture') == 0
 
     architecture = tmp_path / 'engineering/architecture/finance/architecture.md'
-    architecture.write_text(architecture.read_text(encoding='utf-8') + '\n## Changed boundary\n', encoding='utf-8')
+    architecture.write_text(architecture.read_text(encoding='utf-8-sig') + '\n## Changed boundary\n', encoding='utf-8')
     m = load_methodology(ROOT)
     assert status(tmp_path, m, 'finance')['architecture']['status'] == 'needs_revalidation'
     assert status(tmp_path, m, 'finance')['system-architecture']['status'] == 'needs_revalidation'
