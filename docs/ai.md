@@ -44,7 +44,8 @@ Localization is therefore a structural concern, not a post-processing pass over 
 
 Clarification-question identity is owned by the Thesys runtime. AI agents return
 question text, rationale and blocking status, but never assign question IDs.
-Thesys allocates project-wide canonical IDs in the `QST-NNN` format and preserves
-an existing ID when a regenerated proposal represents the same unresolved
-decision. Human answers are keyed by those canonical IDs and are carried into
-clarification history during regeneration.
+Thesys allocates project-wide canonical IDs in the `QST-NNN` format. An unresolved
+question can retain its identity while it remains the same unanswered decision;
+after a human answer, if the decision is still unresolved, the runtime allocates
+a new question identity. Resolved questions disappear from the current proposal
+but remain in clarification history.

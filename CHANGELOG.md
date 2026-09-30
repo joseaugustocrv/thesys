@@ -5,6 +5,10 @@
 ### Changed
 
 - Removed lifecycle metadata (status, proposal authority and artifact placeholder version/owner fields) from generated artifact prose. Lifecycle state remains represented by Thesys runtime metadata and the registry.
+- Centralized agent policy and stage-specific generation guidance in the methodology-owned `methodology/agents/prompts.json` contract.
+- Strengthened document-generation guidance so proposals are implementation-enabling, distinguish known facts from proposed decisions, and ask blocking questions when a current-stage decision is genuinely unresolved.
+- Fixed documentation navigation for lifecycle stages that share an artifact prefix, notably Architecture and System Architecture.
+- Added localized documentation-shell labels and explicit lifecycle stage metadata to the documentation manifest.
 - Approval now materializes the approved proposal content without rewriting its document body.
 
 
@@ -134,7 +138,7 @@
 - Added deterministic end-to-end lifecycle coverage through implementation, verification, release and retirement, including backward revalidation.
 - Added mock and OpenAI structured-output agent support.
 - Added implementation file generation through methodology-defined actions.
-- Added public methodology documentation while keeping proprietary prompt and orchestration material outside the distributable methodology surface.
+- Added public methodology documentation and a centralized, versioned agent prompt contract.
 - Added deterministic CLI and validation paths for project initialization, human Intent, Engineering Units, evidence, changes and repository validation.
 
 ### Changed

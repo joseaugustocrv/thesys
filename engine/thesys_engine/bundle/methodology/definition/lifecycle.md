@@ -2,7 +2,7 @@
 thesys:
   schema: "4"
   methodology: "thesys-core"
-  version: "0.3.1"
+  version: "0.4.0"
   language: "en-US"
 lifecycle:
   stages:

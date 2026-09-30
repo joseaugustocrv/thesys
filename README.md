@@ -53,7 +53,7 @@ without embedding a project-specific lifecycle sequence in the CLI.
 ## Repository structure
 
 ```text
-methodology/     Executable methodology, models, workflows, policies and templates
+methodology/     Executable methodology, models, workflows, policies, prompts and templates
 docs/            Public methodology and product documentation
 engine/          Generic runtime and CLI implementation
 tests/           Automated verification
@@ -126,4 +126,6 @@ thesys evidence record verification:billing PASS --related REQ-001 --path .
 
 The authoritative lifecycle is defined in
 `methodology/definition/lifecycle.md`, with the capability catalog in
-`methodology/definition/catalog.json`.
+`methodology/definition/catalog.json`. Agent policy is centralized in
+`methodology/agents/prompts.json` so new provider adapters do not duplicate
+lifecycle rules.

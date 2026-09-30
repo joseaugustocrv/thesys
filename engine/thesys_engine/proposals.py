@@ -5,6 +5,27 @@ from .agents import get_agent,GenerationContext
 from .workflow import can_propose,save_proposal,load_proposal,accept_proposal,proposal_questions,authoritative_inputs,_load_answers,_clarification_history_for,proposal_path
 from .project import unit_info,project_language
 
+def _artifact_index(project, m, stage, unit):
+    """Return exact upstream artifact IDs and paths for agent traceability."""
+    from .registry import find_artifact_id_by_path
+    from .workflow import _dependency_targets, stage_unit
+    index = {}
+    for dep_id in stage.depends_on:
+        for dep_name, dep_unit in _dependency_targets(project, m, stage, unit, dep_id):
+            dep_stage = m.stage(dep_name)
+            p = m.artifact_path(project, dep_stage, stage_unit(m, dep_stage, dep_unit))
+            if not p or not p.is_file():
+                continue
+            aid = find_artifact_id_by_path(project, p)
+            key = dep_name if not stage.config.get("aggregate_units") else f"{dep_name}:{dep_unit}"
+            index[key] = {
+                "id": aid,
+                "stage": dep_name,
+                "unit": dep_unit,
+                "path": str(p.relative_to(project)).replace("\\", "/"),
+            }
+    return index
+
 def _context(project,m,unit,stage):
     approved={}
     from .workflow import stage_unit
@@ -42,7 +63,7 @@ def _context(project,m,unit,stage):
             if 'architecture' in unit_inputs:
                 related_units[key]['architecture']=unit_inputs['architecture']
         scope=unit_info(project,'default')['scope']
-        return GenerationContext(approved.get('intent',''), 'default', scope, project_language(project,m.language), approved, _load_answers(project), related_units, 'system', None, (), _clarification_history_for(project, stage.id, 'default'))
+        return GenerationContext(approved.get('intent',''), 'default', scope, project_language(project,m.language), approved, _load_answers(project), related_units, 'system', None, (), _clarification_history_for(project, stage.id, 'default'), _artifact_index(project, m, stage, 'default'))
 
     statuses=status(project,m,unit)
     for s in m.stages:
@@ -62,6 +83,7 @@ def _context(project,m,unit,stage):
         info.get('parent'),
         tuple(info.get('dependencies', [])),
         _clarification_history_for(project, stage.id, unit),
+        _artifact_index(project, m, stage, unit),
     )
 
 def _validate_artifact_refs(project, methodology, content):

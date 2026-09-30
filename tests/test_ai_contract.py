@@ -164,3 +164,30 @@ def test_stage_prompt_receives_clarification_history(tmp_path):
     agent.propose_document(m,"architecture",GenerationContext("intent","default","scope","pt-BR",{}, {}, {}, "system", None, (), history))
     assert "Clarification history for this stage and unit" in agent.client.responses.kwargs["input"]
     assert "QST-021" in agent.client.responses.kwargs["input"]
+
+
+def test_agent_prompt_catalog_is_methodology_owned_and_stage_specific():
+    from pathlib import Path
+    m = load_methodology(ROOT)
+    prompt_path = m.root / 'methodology' / 'agents' / 'prompts.json'
+    assert prompt_path.is_file()
+    catalog = json.loads(prompt_path.read_text(encoding='utf8'))
+    assert catalog['schema_version'] == '1.0'
+    assert catalog['common']
+    for stage in m.stages:
+        if stage.action == 'document':
+            assert stage.id in catalog['stages']
+    assert 'artifact index' in ' '.join(catalog['common']).lower()
+    assert 'may propose technologies' in ' '.join(catalog['stages']['architecture']).lower()
+
+
+def test_stage_prompt_receives_exact_artifact_index():
+    m = load_methodology(ROOT)
+    payload={'sections': {k:'content' for k in __import__('thesys_engine.templates',fromlist=['template_contract']).template_contract(m,'architecture').section_ids},'questions':[]}
+    client=FakeClient(payload); agent=OpenAIAgent(client)
+    from thesys_engine.agents import GenerationContext
+    ctx=GenerationContext('intent','compras','scope','pt-BR',{'requirements':'REQ'}, {}, artifact_index={'requirements': {'id':'REQ-001','path':'engineering/requirements/compras/requirements.md','stage':'requirements','unit':'compras'}})
+    agent.propose_document(m,'architecture',ctx)
+    call=client.responses.calls[0]
+    assert 'REQ-001' in call['input']
+    assert 'exact IDs and paths from the Artifact index' in call['instructions']

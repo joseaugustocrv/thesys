@@ -18,6 +18,7 @@ class GenerationContext:
     unit_parent: str | None = None
     unit_dependencies: tuple = ()
     clarification_history: list = field(default_factory=list)
+    artifact_index: dict = field(default_factory=dict)
 
 
 
@@ -184,6 +185,15 @@ class OpenAIAgent(Agent):
         except Exception as exc:
             raise ThesysError(f'OpenAI request failed: {exc}') from exc
 
+    def _prompt_catalog(self, methodology):
+        path = methodology.root / "methodology" / "agents" / "prompts.json"
+        if not path.is_file():
+            raise ThesysError(f"Agent prompt catalog not found: {path}")
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ThesysError(f"Invalid agent prompt catalog: {path}") from exc
+
     def _language_rule(self, language):
         return (
             f'Project language: {language}. All natural-language artifact content and all human-facing questions must be written in that language. '
@@ -193,9 +203,14 @@ class OpenAIAgent(Agent):
             'This prohibition also applies when incorporating human answers, explaining resolved decisions, writing traceability sections, or describing the basis for a decision. '
             'Questions and their IDs belong exclusively to proposal metadata and clarification history. If a human answer resolves a question, incorporate the resulting decision directly without mentioning the question ID, question text, or clarification rationale. '
             'Never copy QST-NNN identifiers from the input, clarification history, human answers, or previous proposals into artifact content. '
-            'Do not invent facts, decisions, approvals, evidence, technologies or test results. '
             'For pt-BR, do not use English normative words such as shall, must or should in natural-language content.'
         )
+
+    def _stage_prompt(self, methodology, stage):
+        catalog = self._prompt_catalog(methodology)
+        common = catalog.get('common', [])
+        specific = catalog.get('stages', {}).get(stage, [])
+        return ' '.join([*common, *specific])
 
     def propose_discovery(self, m, human_input, answers, project):
         language = project_language(project, m.language)
@@ -212,13 +227,10 @@ class OpenAIAgent(Agent):
             'additionalProperties': False,
         }
         instructions = (
-            'Act as the Thesys discovery engineer. The human Intent is the only initial authority. '
-            + self._language_rule(language) + ' '
-            'Discovery defines intent, not detailed requirements, specification, architecture, implementation or operations. '
-            'Ask a focused blocking question only when an unanswered issue changes purpose, desired outcome, scope boundary, primary users/stakeholders, material constraint or success criterion. '
-            'Do not re-ask answered questions. Treat explicit human answers as authoritative clarification history. '
-            'If the remaining unknowns can be resolved downstream without changing the intent, treat Discovery as converged and return no new questions. Unknown downstream details remain unknown and belong to later lifecycle stages. '
-            'Fill every section key with concise content; an intentionally empty section is allowed only when the source does not support content.'
+            self._language_rule(language) + ' ' +
+            ' '.join(self._prompt_catalog(m).get('common', [])) + ' ' +
+            ' '.join(self._prompt_catalog(m).get('discovery', [])) + ' ' +
+            'Fill every section key with substantive content; an intentionally empty section is allowed only when the source genuinely does not support content.'
         )
         inp = (
             f'Human Intent Input:\n{human_input}\n\n'
@@ -247,25 +259,24 @@ class OpenAIAgent(Agent):
                 'Preserve their boundaries and dependencies; do not invent unsupported system-level architecture.'
             )
         instructions = (
-            'Produce a non-authoritative Thesys artifact proposal. Use only authoritative inputs and answered questions. '
-            'Every artifact supplied under Authoritative artifacts is already human-approved and authoritative for this stage. '
-            'Never ask whether an authoritative artifact, decision, requirement, clarification, or governance record is approved; its presence there establishes its authority. '
-            + language_rule + integration_rule + ' '
-            'The template structure is authoritative. Do not emit headings or repeat the template. '
-            'Populate the section keys directly. The lifecycle below is authoritative for stage responsibilities and dependencies. '
-            'For every question, apply the question-blocking policy defined by the methodology, using the complete lifecycle, current stage, approved upstream artifacts, and purpose of the decision. '
-            'The model owns the semantic blocking decision; the runtime does not reinterpret it by topic, keyword, or stage-specific heuristic. '
-            'If blocking=false because a later stage owns the detail, explain that in why. If no material question remains, return an empty question list. '
-            'Human answers are evidence that must be evaluated, not proof that the corresponding decision was resolved. '
-            'For every previously blocking question represented in the clarification history: if the human answer resolves the decision materially, do not ask it again and incorporate the resolved decision into the artifact when applicable. '
-            'If the human answer does not resolve the decision materially, the unresolved issue MUST be returned as a new entry in the questions array with blocking=true. '
-            'Do not assign or reuse question IDs; the Thesys runtime assigns question IDs after generation. '
-            'Questions are proposal metadata, never artifact content. Never place unresolved clarification questions, pending decisions, or their rationales in artifact sections. '
+            self._stage_prompt(m, stage) + ' ' +
+            'Produce a non-authoritative Thesys artifact proposal using only the supplied authoritative inputs, artifact index, human answers and clarification history. ' +
+            'Every artifact supplied under Authoritative artifacts is already human-approved and authoritative for this stage. ' +
+            'Never ask whether an authoritative artifact, decision, requirement, clarification, or governance record is approved; its presence establishes authority. ' +
+            self._language_rule(c.language) + ' ' +
+            'The lifecycle below is authoritative for stage responsibilities and dependencies. For every question, apply the methodology question-blocking policy using the complete lifecycle, current stage, approved upstream artifacts, unit metadata and purpose of the decision. ' +
+            'The model owns the semantic blocking decision; the runtime does not reinterpret it by topic, keyword or stage-specific heuristic. ' +
+            'If blocking=false because a later stage owns the detail, explain that in why. If no material question remains, return an empty question list. ' +
+            'Human answers are evidence that must be evaluated, not proof that the corresponding decision was resolved. ' +
+            'For every previously blocking question in clarification history, if the answer resolves the decision materially, do not ask it again and incorporate the resulting decision without mentioning its question ID. If it does not resolve the decision, return a new blocking question without an ID. ' +
+            'Questions are proposal metadata, never artifact content. Never place unresolved questions, pending decisions or their rationales in artifact sections. ' +
+            'When referencing upstream artifacts, use the exact IDs and paths from the Artifact index. Do not invent, renumber or substitute artifact identifiers.'
         )
         inp = (
             f'Stage: {stage}\nUnit: {c.unit}\nScope: {c.unit_scope}\n'
             f'Authoritative Unit metadata:\n{json.dumps({"key":c.unit,"type":c.unit_type,"parent":c.unit_parent,"dependencies":list(c.unit_dependencies)}, ensure_ascii=False, indent=2)}\n\n'
             f'Authoritative artifacts:\n{json.dumps(c.approved_artifacts, ensure_ascii=False, indent=2)}\n\n'
+            f'Artifact index (authoritative IDs and paths):\n{json.dumps(c.artifact_index, ensure_ascii=False, indent=2)}\n\n'
             f'Human answers:\n{json.dumps(c.answers, ensure_ascii=False, indent=2)}\n\n'
             f'Clarification history for this stage and unit:\n{json.dumps(c.clarification_history, ensure_ascii=False, indent=2)}\n\n'
             f'Related Unit architecture inputs:\n{json.dumps(c.related_units, ensure_ascii=False, indent=2)}\n\n'

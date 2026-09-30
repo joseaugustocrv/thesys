@@ -22,6 +22,7 @@ def test_docs_build_generates_static_navigation(tmp_path):
     assert 'System Architecture Integration' in html
     assert 'Related artifacts' in html
     assert 'Questions & answers' in html
+    assert 'Architecture & Design' in html
     assert 'const LIFECYCLE' in html
     assert 'Supporting artifacts' in html
     assert 'Not generated' in html
@@ -154,3 +155,46 @@ def test_docs_distinguish_architecture_and_system_architecture_with_shared_prefi
     by_id={item['id']:item for item in items}
     assert by_id['ARC-001']['stage']=='architecture'
     assert by_id['ARC-002']['stage']=='system-architecture'
+
+
+def test_docs_do_not_collide_stages_with_shared_artifact_prefix(tmp_path):
+    main(['init','--path',str(tmp_path)])
+    from thesys_engine.registry import register_artifact
+    import json
+    arch=tmp_path/'engineering/architecture/compras/architecture.md'
+    sysarch=tmp_path/'engineering/architecture/system-architecture.md'
+    arch.parent.mkdir(parents=True,exist_ok=True)
+    arch.write_text('# Arquitetura e Design\n',encoding='utf8')
+    sysarch.write_text('# Integração da Arquitetura do Sistema\n',encoding='utf8')
+    registry={'artifacts':{},'relations':[],'events':[]}
+    registry['artifacts']={
+        'ARC-001': {'id':'ARC-001','type':'ARC','path':str(arch),'unit':'compras','status':'authoritative','authority':'human'},
+        'ARC-002': {'id':'ARC-002','type':'ARC','path':str(sysarch),'unit':'default','status':'authoritative','authority':'human'},
+    }
+    (tmp_path/'.thesys/registry.json').write_text(json.dumps(registry),encoding='utf8')
+    main(['config','set','language','pt-BR','--path',str(tmp_path)])
+    main(['docs','build','--path',str(tmp_path)])
+    html=(tmp_path/'.thesys/docs/index.html').read_text(encoding='utf-8-sig')
+    manifest=json.loads((tmp_path/'.thesys/docs/manifest.json').read_text(encoding='utf-8-sig'))
+    by_id={x['id']:x for x in manifest['artifacts']}
+    assert by_id['ARC-001']['stage']=='architecture'
+    assert by_id['ARC-002']['stage']=='system-architecture'
+    assert "stageItems(stageKey)" in html
+    assert "stageItems(key)" in html
+    assert "LIFECYCLE_SCOPES[stageKey]" in html
+    assert 'DOCUMENTAÇÃO' in html
+    assert 'Pesquisar artefatos' in html
+
+
+def test_docs_localize_lifecycle_shell_for_project_language(tmp_path):
+    main(['init','--path',str(tmp_path)])
+    main(['config','set','language','pt-BR','--path',str(tmp_path)])
+    main(['intent','create','Criar um sistema.','--path',str(tmp_path)])
+    main(['docs','build','--path',str(tmp_path)])
+    html=(tmp_path/'.thesys/docs/index.html').read_text(encoding='utf-8-sig')
+    assert '<html lang="pt-BR">' in html
+    assert 'DOCUMENTAÇÃO' in html
+    assert 'Pesquisar artefatos' in html
+    assert 'Arquitetura e Design' in html
+    assert 'Integração da Arquitetura do Sistema' in html
+    assert 'Perguntas e respostas' in html
