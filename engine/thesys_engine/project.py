@@ -89,6 +89,49 @@ def resolve_project(path, key=None):
     return active_project(path)
 
 
+
+def list_units(project, include_default=True):
+    units_dir = project / ".thesys" / "units"
+    result = []
+    for path in sorted(units_dir.glob("*.json")):
+        try:
+            data = json.loads(read_text(path))
+        except json.JSONDecodeError as exc:
+            raise ProjectError(f"Invalid engineering unit metadata: {path}") from exc
+        if include_default or data.get("key") != "default":
+            result.append(data)
+    return result
+
+
+def work_units(project):
+    """Return engineering units that participate in unit-scoped lifecycle work.
+
+    The default system unit remains the fallback for small projects. Once child
+    units exist, they become the unit-scoped work set and the default unit acts
+    as the project/system container.
+    """
+    children = list_units(project, include_default=False)
+    if children:
+        return children
+    default = [u for u in list_units(project) if u.get("key") == "default"]
+    return default
+
+
+def has_child_units(project):
+    return bool(list_units(project, include_default=False))
+
+
+def ensure_project_within_workspace(project, workspace):
+    project = Path(project).resolve()
+    workspace = Path(workspace).resolve()
+    if project == workspace:
+        raise ProjectError("A Thesys project must be a child of the 'Thesys Projects' workspace, not the workspace itself.")
+    try:
+        project.relative_to(workspace)
+    except ValueError as exc:
+        raise ProjectError(f"Thesys projects must be created inside the workspace: {workspace}") from exc
+    return project
+
 def _project_metadata(project, methodology, template, name, key):
     return {
         "id": "PRJ-" + uuid.uuid4().hex[:12].upper(),
@@ -219,7 +262,7 @@ def init_project(project, methodology, template=None, name=None, key=None):
 
     # Project creation establishes only system metadata. No engineering artifact is
     # authoritative until an AI proposal is explicitly accepted by a human.
-    add_event(project,"project-initialized",methodology.name,{"version":methodology.version,"template":selected.id})
+    add_event(project,"project-initialized",project_key,{"version":methodology.version,"template":selected.id})
 
 
 def project_info(project):
@@ -251,11 +294,21 @@ def create_unit(project,key,name,scope="",unit_type="feature",parent="default",m
     if parent and not (project/".thesys"/"units"/f"{parent}.json").is_file(): raise ProjectError(f"Parent engineering unit not found: {parent}")
     p=project/".thesys"/"units"/f"{key}.json"
     if p.exists(): raise ProjectError(f"Engineering unit already exists: {key}")
-    payload={"key":key,"name":name,"scope":scope,"type":unit_type,"parent":parent,"dependencies":dependencies or [],"source_intent":"engineering/intent/intent.md"}
+    payload={"key":key,"name":name,"scope":scope,"type":unit_type,"parent":parent,"dependencies":dependencies or [],"container": key == "default","source_intent":"engineering/intent/intent.md"}
     write_text(p,json.dumps(payload,ensure_ascii=False,indent=2)+"\n")
     if methodology is None:
         from .methodology import load_methodology
         methodology=load_methodology(Path(__file__).resolve().parents[2])
+    if key != "default":
+        default_path = project/".thesys"/"units"/"default.json"
+        if default_path.is_file():
+            try:
+                default_data = json.loads(read_text(default_path))
+                if not default_data.get("container"):
+                    default_data["container"] = True
+                    write_text(default_path, json.dumps(default_data, ensure_ascii=False, indent=2) + "\n")
+            except json.JSONDecodeError:
+                pass
     add_event(project,"unit-created",key,{"type":unit_type,"parent":parent,"source_intent":"engineering/intent/intent.md"})
     return p
 

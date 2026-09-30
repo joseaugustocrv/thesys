@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from .errors import ProjectError
 from .io import read_text,write_text
-from .workflow import can_propose,save_proposal,load_proposal,proposal_questions,authoritative_inputs,_load_answers,proposal_path
+from .workflow import can_propose,save_proposal,load_proposal,proposal_questions,authoritative_inputs,_load_answers,_clarification_history_for,proposal_path
 from .agents import get_agent,GenerationContext
 from .project import unit_info,project_language
 from .gates import status
@@ -13,22 +13,22 @@ def _context(project,m,unit):
  for s in m.stages:
   p=m.artifact_path(project,s,stage_unit(m,s,unit))
   if p and p.is_file() and st.get(s.id,{}).get('status') in {'approved','completed'}: approved[s.id]=read_text(p)
- return GenerationContext(approved.get('intent',''),unit,unit_info(project,unit)['scope'],project_language(project,m.language),approved,_load_answers(project))
+ return GenerationContext(approved.get('intent',''),unit,unit_info(project,unit)['scope'],project_language(project,m.language),approved,_load_answers(project),{},unit_info(project,unit).get('type','system'),unit_info(project,unit).get('parent'),tuple(unit_info(project,unit).get('dependencies',[])),_clarification_history_for(project,'implementation',unit))
 
 def propose(project,m,unit='default',provider='openai'):
  stage=m.stage('implementation'); can_propose(project,m,stage,unit)
  c=_context(project,m,unit); result=get_agent(provider).propose_code(m,c)
  inputs=authoritative_inputs(project,m,stage,unit)
  content=json.dumps({'files':result.get('files',{})},ensure_ascii=False,indent=2)
- return save_proposal(project,'implementation',unit,provider,content,result.get('questions',[]),inputs)
+ return save_proposal(project,'implementation',unit,provider,content,result.get('questions',[]),inputs,m)
 
-def read_impl_proposal(project,unit='default'):
- p=proposal_path(project,'implementation',unit)
+def read_impl_proposal(project,m,unit='default'):
+ p=proposal_path(project,'implementation',unit,m)
  if not p.is_file(): raise ProjectError('Implementation proposal not found. Run thesys implementation propose first.')
  return json.loads(read_text(p))
 
 def accept(project,m,unit='default'):
- p=read_impl_proposal(project,unit)
+ p=read_impl_proposal(project,m,unit)
  if proposal_questions(project,p): raise ProjectError('Implementation proposal has unanswered blocking questions.')
  stage=m.stage('implementation'); inputs=authoritative_inputs(project,m,stage,unit)
  import hashlib
@@ -42,7 +42,7 @@ def accept(project,m,unit='default'):
   target=project/rel; target.parent.mkdir(parents=True,exist_ok=True); write_text(target,content); manifest.append(raw)
  ex=m.execution_path(project,stage,unit); ex.parent.mkdir(parents=True,exist_ok=True); from .gates import _dep_fingerprint
  fp=hashlib.sha256(json.dumps(_dep_fingerprint(project,m,stage,unit),sort_keys=True).encode()).hexdigest(); write_text(ex,json.dumps({'unit':unit,'files':manifest,'input_fingerprint':fp,'proposal_id':p['proposal_id']},indent=2)+'\n')
- p['status']='accepted'; p['accepted_at']=__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(); write_text(proposal_path(project,'implementation',unit),json.dumps(p,ensure_ascii=False,indent=2)+'\n')
+ p['status']='accepted'; p['accepted_at']=__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(); write_text(proposal_path(project,'implementation',unit,m),json.dumps(p,ensure_ascii=False,indent=2)+'\n')
  from .registry import add_event
  add_event(project,'human-approved-ai-implementation','implementation:'+unit,{'proposal_id':p['proposal_id'],'files':manifest})
  return manifest

@@ -12,5 +12,3 @@ and new intent become controlled engineering units.
 ## Maintenance backlog
 
 ## Lessons and recurring risks
-
-Status: Draft

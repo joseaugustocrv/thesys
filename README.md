@@ -14,7 +14,7 @@ It can operate inside Agile, Scrum, Kanban, DevOps or other delivery models.
 ```text
 Intent Input → AI Discovery → Human Answers → AI Proposal → Human Approval
 → Authoritative Intent + Context → Governance → Requirements → Clarification
-→ Specification → Acceptance → Architecture → Quality/Security/Risk
+→ Specification → Acceptance → Unit Architecture → System Architecture Integration → Quality/Security/Risk
 → Plan → Tasks → Implementation → Verification → Convergence → Release
 → Operation → Evolution → Retirement
 ```
@@ -53,7 +53,7 @@ without embedding a project-specific lifecycle sequence in the CLI.
 ## Repository structure
 
 ```text
-methodology/     Executable methodology, models, workflows, policies and templates
+methodology/     Executable methodology, models, workflows, policies, prompts and templates
 docs/            Public methodology and product documentation
 engine/          Generic runtime and CLI implementation
 tests/           Automated verification
@@ -126,4 +126,6 @@ thesys evidence record verification:billing PASS --related REQ-001 --path .
 
 The authoritative lifecycle is defined in
 `methodology/definition/lifecycle.md`, with the capability catalog in
-`methodology/definition/catalog.json`.
+`methodology/definition/catalog.json`. Agent policy is centralized in
+`methodology/agents/prompts.json` so new provider adapters do not duplicate
+lifecycle rules.

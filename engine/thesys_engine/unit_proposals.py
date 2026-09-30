@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import unicodedata
 
 from .errors import ProjectError, ThesysError
 from .io import read_text, write_text
@@ -23,6 +24,12 @@ class UnitProposal:
     dependencies: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class UnitProposalResult:
+    decompose: bool
+    units: tuple[UnitProposal, ...] = ()
+
+
 def proposal_dir(project):
     return project / ".thesys" / "proposals" / "engineering-units"
 
@@ -36,11 +43,43 @@ def slug(value):
     return value[:64]
 
 
+ALLOWED_UNIT_TYPES = (
+    "system", "domain", "capability", "epic", "module", "service", "feature",
+    "change", "defect", "migration", "security-remediation",
+    "architecture-initiative", "technical-debt", "platform-change",
+)
+
+_UNIT_TYPE_ALIASES = {
+    "sistema": "system",
+    "dominio": "domain",
+    "capacidade": "capability",
+    "epico": "epic",
+    "modulo": "module",
+    "servico": "service",
+    "funcionalidade": "feature",
+    "mudanca": "change",
+    "defeito": "defect",
+    "migracao": "migration",
+    "remediacao-de-seguranca": "security-remediation",
+    "iniciativa-de-arquitetura": "architecture-initiative",
+    "divida-tecnica": "technical-debt",
+    "mudanca-de-plataforma": "platform-change",
+}
+
+def canonical_unit_type(value):
+    raw = str(value or "").strip().lower()
+    if raw in ALLOWED_UNIT_TYPES:
+        return raw
+    normalized = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode("ascii")
+    normalized = re.sub(r"[^a-z0-9]+", "-", normalized).strip("-")
+    return _UNIT_TYPE_ALIASES.get(normalized, raw)
+
+
 def _validate(items):
     if not items:
         raise ThesysError("Engineering unit proposal contains no units.")
     keys = set()
-    allowed_types={"system","domain","capability","epic","module","service","feature","change","defect","migration","security-remediation","architecture-initiative","technical-debt","platform-change"}
+    allowed_types=set(ALLOWED_UNIT_TYPES)
     for item in items:
         if not re.fullmatch(r"[a-z][a-z0-9-]{1,63}", item.key):
             raise ThesysError(f"Invalid engineering unit key: {item.key}")
@@ -79,8 +118,10 @@ def _validate(items):
         visit(key)
 
 
-def write_proposal(project, provider, items):
-    _validate(items)
+def write_proposal(project, provider, items, decompose=True):
+    _validate(items) if items else None
+    if decompose and not items:
+        raise ThesysError("Engineering unit proposal marked for decomposition but contains no units.")
     d = proposal_dir(project); d.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": "1",
@@ -89,6 +130,7 @@ def write_proposal(project, provider, items):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "source_intent": "engineering/intent/intent.md",
         "intent_sha256": intent_digest(project),
+        "decompose": bool(decompose),
         "engineering_units": [
             {"key": x.key, "name": x.name, "scope": x.scope, "rationale": x.rationale,
              "type": x.unit_type, "parent": x.parent, "dependencies": list(x.dependencies)}
@@ -109,10 +151,13 @@ def read_proposal(project):
         raise ProjectError("Engineering unit proposal is invalid JSON.") from exc
     items = [UnitProposal(
         key=x.get("key",""), name=x.get("name",""), scope=x.get("scope",""),
-        rationale=x.get("rationale",""), unit_type=x.get("type","capability"),
+        rationale=x.get("rationale",""), unit_type=canonical_unit_type(x.get("type","capability")),
         parent=x.get("parent","default"), dependencies=tuple(x.get("dependencies",[]))
     ) for x in data.get("engineering_units",[])]
-    _validate(items)
+    if data.get("decompose", bool(items)):
+        _validate(items)
+    elif items:
+        raise ProjectError("Engineering unit proposal is inconsistent: units exist while decomposition is disabled.")
     return data, items
 
 
@@ -137,13 +182,13 @@ class MockUnitAgent:
     name="mock"
     def propose_units(self, intent):
         items=[]
+        seen=set()
         for value in _capability_lines(intent):
             key=slug(value)
-            if not key: continue
+            if not key or key in seen: continue
+            seen.add(key)
             items.append(UnitProposal(key, value, value + ".", "The capability is explicitly stated in the Intent."))
-        if not items:
-            items=[UnitProposal("project-scope","Project Scope","The coherent scope described by the authoritative Intent.","The Intent does not expose a sufficiently explicit capability decomposition for a more specific proposal.","capability")]
-        return items
+        return UnitProposalResult(bool(items), tuple(items))
 
 
 class OpenAIUnitAgent:
@@ -162,12 +207,32 @@ class OpenAIUnitAgent:
         self.model=os.getenv("THESYS_OPENAI_MODEL","gpt-5.6-luna")
 
     def propose_units(self, intent):
-        schema={"type":"object","properties":{"engineering_units":{"type":"array","items":{"type":"object","properties":{
-            "key":{"type":"string"},"name":{"type":"string"},"scope":{"type":"string"},"rationale":{"type":"string"},
-            "type":{"type":"string"},"parent":{"type":"string"},"dependencies":{"type":"array","items":{"type":"string"}}
-        },"required":["key","name","scope","rationale","type","parent","dependencies"],"additionalProperties":False}}},"required":["engineering_units"],"additionalProperties":False}
-        instructions=("Propose Engineering Units from the authoritative Intent. Units are coherent scopes used to organize engineering work; they are not lifecycle stages and not automatically architecture boundaries. "
-                      "Propose only units justified by the Intent. Do not invent requirements, technologies, APIs, architecture or business decisions. Prefer a small number of coherent units. Return a non-authoritative proposal for human review.")
+        schema={
+            "type": "object",
+            "properties": {
+                "decompose": {"type": "boolean"},
+                "engineering_units": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {"type": "string"},
+                            "name": {"type": "string"},
+                            "scope": {"type": "string"},
+                            "rationale": {"type": "string"},
+                            "type": {"type": "string", "enum": list(ALLOWED_UNIT_TYPES)},
+                            "parent": {"type": "string"},
+                            "dependencies": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["key", "name", "scope", "rationale", "type", "parent", "dependencies"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["decompose", "engineering_units"],
+            "additionalProperties": False,
+        }
+        instructions=("Propose Engineering Units from the authoritative Intent. First decide whether decomposition is justified by the complexity and scope explicitly established by the Intent. If the project is small enough to remain coherent as one system, set decompose=false and return an empty engineering_units array. If decomposition is justified, set decompose=true and propose only a small number of coherent units. Units are coherent scopes used to organize engineering work; they are not lifecycle stages and not automatically architecture boundaries. Do not invent requirements, technologies, APIs, architecture or business decisions. The `type` field MUST use one of the canonical English values from the schema; do not translate these enum values even when the project language is Portuguese. Return a non-authoritative proposal for human review.")
         try:
             response=self.client.responses.create(model=self.model,instructions=instructions,input="Authoritative Intent:\n\n"+intent,text={"format":{"type":"json_schema","name":"thesys_engineering_unit_proposal","strict":True,"schema":schema}})
         except Exception as exc:
@@ -178,9 +243,14 @@ class OpenAIUnitAgent:
         for x in data.get("engineering_units",[]):
             key=slug(x.get("key","")); parent=slug(x.get("parent","default")) or "default"
             deps=tuple(slug(v) for v in x.get("dependencies",[]))
-            items.append(UnitProposal(key,x.get("name","").strip(),x.get("scope","").strip(),x.get("rationale","").strip(),x.get("type","capability"),parent,deps))
-        _validate(items)
-        return items
+            unit_type = canonical_unit_type(x.get("type", "capability"))
+            items.append(UnitProposal(key,x.get("name","").strip(),x.get("scope","").strip(),x.get("rationale","").strip(),unit_type,parent,deps))
+        _validate(items) if data.get("decompose", True) else None
+        if data.get("decompose", True) and not items:
+            raise ThesysError("OpenAI returned decompose=true without any Engineering Units.")
+        if not data.get("decompose", True) and items:
+            raise ThesysError("OpenAI returned Engineering Units while decompose=false.")
+        return UnitProposalResult(bool(data.get("decompose", True)), tuple(items))
 
 
 def _intent_is_currently_approved(project):
@@ -195,8 +265,14 @@ def _intent_is_currently_approved(project):
     return bool(approval and approval.get("sha256") == intent_digest(project))
 
 
-def generate_unit_proposal(project, provider="openai"):
-    if not _intent_is_currently_approved(project):
+def generate_unit_proposal(project, provider="openai", methodology=None):
+    # Use the same authoritative gate semantics exposed by `thesys status`.
+    # This avoids a second, subtly different approval implementation.
+    if methodology is None:
+        from .methodology import load_methodology
+        methodology = load_methodology(Path(__file__).resolve().parents[2])
+    from .gates import status
+    if status(project, methodology, "default").get("intent", {}).get("status") != "approved":
         raise ProjectError("Engineering unit proposals require the current Intent to be human-approved first.")
     intent = read_intent(project)
     if proposal_path(project).is_file():
@@ -205,7 +281,8 @@ def generate_unit_proposal(project, provider="openai"):
         raise ProjectError("An engineering unit proposal already exists; review or accept it before generating another.")
     agent = MockUnitAgent() if provider=="mock" else OpenAIUnitAgent() if provider=="openai" else None
     if agent is None: raise ThesysError(f"Unknown unit proposal agent: {provider}")
-    return write_proposal(project,agent.name,agent.propose_units(intent))
+    result = agent.propose_units(intent)
+    return write_proposal(project, agent.name, result.units, result.decompose)
 
 
 def accept_unit_proposal(project, methodology):

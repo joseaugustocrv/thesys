@@ -44,6 +44,13 @@ def add_event(project, kind, subject, details=None):
     _save(project, data)
 
 
+def find_artifact_id_by_path(project, path):
+    target = str(path)
+    for artifact_id, artifact in _load(project).get("artifacts", {}).items():
+        if artifact.get("path") == target:
+            return artifact_id
+    return None
+
 def get(project):
     return _load(project)
 

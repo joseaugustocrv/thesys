@@ -12,5 +12,3 @@
 
 | ID | Control/requirement | Reason | Compensating control | Expiry/review | Approver |
 |---|---|---|---|---|---|
-
-Status: Draft

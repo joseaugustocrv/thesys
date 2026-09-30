@@ -26,5 +26,3 @@
 ## Security evidence
 
 ## Exceptions
-
-Status: Draft

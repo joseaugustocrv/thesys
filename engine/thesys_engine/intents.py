@@ -1,9 +1,9 @@
 from pathlib import Path
 import json
 from .errors import ProjectError
+from .project import project_language
 from .io import read_text,write_text
 from .registry import add_event
-from .templates import load_template
 from .agents import get_agent
 from .workflow import save_proposal,proposal_path,answer_path,_load_answers
 
@@ -21,10 +21,22 @@ def create_intent(project,statement,outcome='',owner='Human owner',source_file=N
  else:
   if not statement or not statement.strip(): raise ProjectError('Intent statement cannot be empty.')
   if methodology is None: raise ProjectError('Methodology is required to create an Intent.')
-  content=load_template(methodology,'intent')
-  content=content.replace('Describe the problem or opportunity that motivates the project or change.',statement.strip())
-  content=content.replace('Describe the outcome that should exist when the intent is satisfied.',(outcome or statement).strip())
-  content=content.replace('[Owner]',owner)
+  from .templates import render_template
+  language=project_language(project, methodology.language)
+  pt=language.lower().startswith('pt-')
+  sections={
+   'purpose': statement.strip(),
+   'desired-outcome': (outcome or statement).strip(),
+   'users-and-stakeholders': '',
+   'scope': '',
+   'in-scope': '',
+   'out-of-scope': '',
+   'success-signals': '',
+   'constraints': '',
+   'assumptions': '',
+   'open-questions': '',
+  }
+  content=render_template(methodology,'intent',sections,language,'default')
  p.parent.mkdir(parents=True,exist_ok=True); write_text(p,content.rstrip()+'\n'); add_event(project,'human-intent-input-created','default',{'path':str(INPUT),'owner':owner}); return p
 
 def read_intent_input(project):
@@ -33,53 +45,54 @@ def read_intent_input(project):
  return read_text(p)
 
 def propose_discovery(project,methodology,provider='openai'):
+ from .gates import status
+ intent_status = status(project, methodology).get('intent', {}).get('status')
+ if intent_status in {'approved', 'completed'}:
+  raise ProjectError('Intent is already authoritative. Use the lifecycle next action to work on the current stage; discovery is only for the pre-approval Intent flow.')
  source=read_intent_input(project); answers=_load_answers(project)
  agent=get_agent(provider); result=agent.propose_discovery(methodology,source,answers,project)
- content=result['intent']; context=result['context']; questions=result.get('questions',[])
+ language=project_language(project, methodology.language)
+ from .templates import render_template
+ from .proposals import _validate_generated_content, _validate_artifact_refs
+ intent_content=render_template(methodology,'intent',result.get('intent_sections',{}),language,'default')
+ context=render_template(methodology,'context',result.get('context_sections',{}),language,'default')
+ intent_content=_validate_generated_content(intent_content,language)
+ intent_content=_validate_artifact_refs(project,methodology,intent_content)
+ context=_validate_generated_content(context,language)
+ questions=[{**q,'question':str(q.get('question','')).strip(),'why':str(q.get('why','')).strip()} for q in result.get('questions',[])]
  inputs={'intent_input':source,'answers':answers,'project_template':str((project/'.thesys/project.yaml').read_text(encoding='utf-8'))}
- # Store the combined proposal in the intent proposal. Context is part of the same human approval decision.
- p=save_proposal(project,'intent','default',agent.name,json.dumps({'intent':content,'context':context},ensure_ascii=False,indent=2),questions,inputs)
+ p=save_proposal(project,'intent','default',agent.name,intent_content,questions,inputs,metadata={'discovery_context': context})
  return p
 
 def read_discovery_proposal(project):
  p=proposal_path(project,'intent','default')
  if not p.is_file(): raise ProjectError('Discovery proposal not found. Run thesys discovery propose first.')
  import json
- data=json.loads(read_text(p)); body=json.loads(data['content']); return data,body
+ data=json.loads(read_text(p))
+ if isinstance(data.get('content'), str):
+  try:
+   body=json.loads(data['content'])
+  except json.JSONDecodeError:
+   body={'intent': data['content'], 'context': data.get('discovery_context', '')}
+ else:
+  body=data.get('content') or {}
+ return data,body
 
 def accept_discovery(project,methodology):
  from .workflow import proposal_questions
  data,body=read_discovery_proposal(project)
  if data.get('status')!='proposed': raise ProjectError('Discovery proposal is not current; regenerate it before approval.')
  if proposal_questions(project,data): raise ProjectError('Blocking discovery questions remain unanswered.')
- from .gates import status
  if data.get('input_fingerprint') != __import__('hashlib').sha256(__import__('json').dumps({'intent_input':read_intent_input(project),'answers':_load_answers(project),'project_template':str((project/'.thesys/project.yaml').read_text(encoding='utf-8'))},ensure_ascii=False,sort_keys=True).encode()).hexdigest():
   raise ProjectError('Discovery proposal is stale. Regenerate it.')
- ip=project/INTENT; cp=project/CONTEXT; ip.parent.mkdir(parents=True,exist_ok=True); cp.parent.mkdir(parents=True,exist_ok=True)
- def _mark_authoritative(content):
-  lines=[]
-  for line in content.splitlines():
-   normalized=line.casefold()
-   if 'status da proposta:' in normalized:
-    line='**Status da proposta:** Autoritativa.'
-   elif normalized.startswith('**status:**'):
-    line='**Status:** Authoritative'
-   elif normalized.startswith('status:'):
-    line='Status: Authoritative'
-   lines.append(line)
-  return '\n'.join(lines).rstrip()+'\n'
- write_text(ip,_mark_authoritative(body['intent'])); write_text(cp,_mark_authoritative(body['context']))
+ ip=project/INTENT; ip.parent.mkdir(parents=True,exist_ok=True)
+ intent_content = body.get('intent', '')
+ write_text(ip, intent_content.rstrip() + '\n')
  from .gates import approve
- # Context is the discovery result and is approved together with Intent by the same human action.
  approve(project,methodology,'intent','default',proposal_id=data['proposal_id'])
- # Context has a distinct artifact/approval record, using the same proposal as evidence of human approval.
- import hashlib,json
- state=json.loads(read_text(project/'.thesys/approvals.json')); from .gates import _dep_fingerprint
- state['approvals']['context:default']={'sha256':hashlib.sha256(cp.read_bytes()).hexdigest(),'dependencies':_dep_fingerprint(project,methodology,methodology.stage('context'),'default'),'proposal_id':data['proposal_id'],'approved_at':__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()}; write_text(project/'.thesys/approvals.json',json.dumps(state,ensure_ascii=False,indent=2)+'\n')
- from .registry import allocate_id,register_artifact,add_event
- register_artifact(project,allocate_id(project,'CTX'),'CTX',cp,'default',status='authoritative',authority='human')
+ from .registry import add_event
  add_event(project,'discovery-accepted','default',{'proposal_id':data['proposal_id']})
- return ip,cp
+ return ip,None
 
 # Backward-compatible aliases for existing callers.
 def propose_intent(project,methodology,provider='openai'): return propose_discovery(project,methodology,provider)

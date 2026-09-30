@@ -87,8 +87,7 @@ Authoritative Intent + Context
 Lifecycle execution
 ```
 
-Engineering Units are optional decomposition. When the project benefits from
-separate scopes, the human can introduce units from the authoritative Intent:
+Engineering Units are the mechanism for controlling complexity in larger scopes. A small project may use the default system unit directly. When a project benefits from separate scopes, the human can introduce units from the authoritative Intent:
 
 ```text
 Authoritative Intent
@@ -126,9 +125,7 @@ System
 └── Infrastructure
 ```
 
-Each unit can carry its own context, requirements, architecture, plan,
-implementation and verification while retaining parent, dependency and
-traceability relationships.
+Each unit can carry its own context, requirements, specification, acceptance, local architecture, plan, implementation and verification while retaining parent, dependency and traceability relationships. When multiple Units exist, the default system unit becomes the project/system container for unit-scoped work. The lifecycle then returns to a project-level System Architecture Integration stage that synthesizes the approved Unit architectures into a system view without replacing them.
 
 ## Changing an Intent
 

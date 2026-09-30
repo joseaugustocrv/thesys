@@ -15,5 +15,3 @@ Each criterion must be observable and verifiable.
 ## Traceability
 
 List the requirement and specification identifiers covered by each criterion.
-
-Status: Draft

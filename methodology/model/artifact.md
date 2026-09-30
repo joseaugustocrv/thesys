@@ -1,10 +1,10 @@
 # Artifact Model
 
-Every authoritative engineering artifact has an identity, type, version,
-status, authority, owner, source, parent/child relationships, dependencies,
-traceability relations, decisions, evidence, approvals, risks and change
-history. Content is one part of the artifact; metadata makes its engineering
-meaning machine-addressable.
+Every authoritative engineering artifact has machine-addressable metadata such
+as identity, type, version, lifecycle status, authority, ownership, source,
+relationships, dependencies, approvals, risks and change history. Content is
+the engineering knowledge itself; lifecycle metadata must not be duplicated
+as prose inside the artifact.
 
 ## States
 

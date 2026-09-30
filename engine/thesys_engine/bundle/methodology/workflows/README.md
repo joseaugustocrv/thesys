@@ -4,7 +4,13 @@ Thesys uses a common control model with specialized workflows.
 
 ## Feature / capability
 
-`Intent → Requirements → Clarification → Specification → Acceptance → Architecture → Quality/Security/Risk → Plan → Tasks → Implementation → Verification → Convergence → Release`
+For a feature or capability within the standard project lifecycle, the flow is:
+
+`Intent → Context → Governance → Requirements → Clarification → Specification → Acceptance → Unit Architecture → System Architecture Integration → Quality → Security → Risk → Plan → Tasks → Implementation → Verification → Convergence → Release`
+
+Project-level Context and Governance may already be established and inherited
+by the affected unit. Specialized work does not require duplicating those
+artifacts when they are already authoritative for the project.
 
 ## Defect
 

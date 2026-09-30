@@ -6,7 +6,7 @@
 
 ## Task decomposition
 
-### TSK-001 — [Task title]
+### TSK-001 — Implementation task
 
 **Requirements:** [REQ]
 
@@ -20,7 +20,7 @@
 
 **Verification:** [TST / ACC]
 
-### TSK-002 — [Task title]
+### TSK-002 — Implementation task
 
 **Requirements:** [REQ]
 

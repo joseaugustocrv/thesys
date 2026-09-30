@@ -1,83 +1,311 @@
-from dataclasses import dataclass
-import json,os
+from dataclasses import dataclass, field
+import json, os
 from .errors import ThesysError
-from .templates import load_template
+from .templates import template_contract, template_schema, render_template
 from .project import project_language
+
 
 @dataclass(frozen=True)
 class GenerationContext:
-    intent:str
-    unit:str
-    unit_scope:str
-    language:str
-    approved_artifacts:dict
-    answers:dict
+    intent: str
+    unit: str
+    unit_scope: str
+    language: str
+    approved_artifacts: dict
+    answers: dict
+    related_units: dict = field(default_factory=dict)
+    unit_type: str = 'system'
+    unit_parent: str | None = None
+    unit_dependencies: tuple = ()
+    clarification_history: list = field(default_factory=list)
+    artifact_index: dict = field(default_factory=dict)
+
+
+
+
+def _question_schema():
+    """Return the agent-facing clarification-question contract.
+
+    Question identity is intentionally absent: IDs belong to the Thesys
+    runtime and are allocated after the model response is validated.
+    """
+    return {
+        "type": "object",
+        "properties": {
+            "question": {"type": "string", "minLength": 1},
+            "why": {"type": "string", "minLength": 1},
+            "blocking": {"type": "boolean"},
+        },
+        "required": ["question", "why", "blocking"],
+        "additionalProperties": False,
+    }
+
+def _lifecycle_question_context(methodology, current_stage):
+    """Build the model-facing lifecycle contract for question classification."""
+    stages = []
+    for stage in methodology.stages:
+        stages.append({
+            "id": stage.id,
+            "name": stage.name,
+            "depends_on": list(stage.depends_on),
+            "action": stage.action,
+            "scope": stage.config.get("scope", "unit"),
+            "artifact": stage.artifact,
+            "template_sections": list(template_schema(methodology, stage.id).keys()),
+        })
+    return {
+        "current_stage": current_stage,
+        "stages": stages,
+        "rules": {
+            "human_approval_required_before_progression": methodology.rules.get("human_approval_required_before_progression", True),
+            "unresolved_questions_block_affected_gate": methodology.rules.get("unresolved_questions_block_affected_gate", True),
+            "question_blocking": methodology.rules.get("question_blocking", {}),
+        },
+    }
+
 
 class Agent:
-    name='unknown'
-    def propose_discovery(self,*a,**k): raise NotImplementedError
-    def propose_document(self,*a,**k): raise NotImplementedError
-    def propose_code(self,*a,**k): raise NotImplementedError
+    name = 'unknown'
+    def propose_discovery(self, *a, **k): raise NotImplementedError
+    def propose_document(self, *a, **k): raise NotImplementedError
+    def propose_code(self, *a, **k): raise NotImplementedError
+
+
+def _generic_sections(methodology, stage, language, unit):
+    contract = template_contract(methodology, stage)
+    pt = language.lower().startswith('pt-')
+    sections = {}
+    for section in contract.sections:
+        if section.id.endswith('status'):
+            sections[section.id] = '**Status:** Rascunho' if pt else '**Status:** Draft'
+        else:
+            sections[section.id] = (
+                f'Conteúdo proposto para a seção da Unidade {unit}.' if pt else
+                f'Proposed content for the Unit {unit}.'
+            )
+    return sections
+
 
 class MockAgent(Agent):
-    name='mock'
-    def propose_discovery(self,m,human_input,answers,project):
-        # Deterministic fixture: questions are driven by explicit tokens so tests can exercise the real question loop.
-        language=project_language(project,m.language)
-        pt=language.lower().startswith('pt')
-        questions=[]
+    name = 'mock'
+
+    def propose_discovery(self, m, human_input, answers, project):
+        language = project_language(project, m.language)
+        pt = language.lower().startswith('pt-')
+        intent_contract = template_contract(m, 'intent')
+        context_contract = template_contract(m, 'context')
+        intent = {s.id: '' for s in intent_contract.sections}
+        context = {s.id: '' for s in context_contract.sections}
+        intent['purpose'] = human_input.strip()
+        def answer_containing(*markers):
+            for record in answers.values():
+                question = str(record.get('question', '')).casefold()
+                if all(marker.casefold() in question for marker in markers):
+                    return record.get('answer', '')
+            return ''
+
+        users_answer = answer_containing('usuários', 'partes interessadas') or answer_containing('usuários')
+        scope_answer = answer_containing('escopo')
+        success_answer = answer_containing('sucesso') or answer_containing('resultado observável')
+        constraints_answer = answer_containing('restrições') or answer_containing('regulat')
+        intent['desired-outcome'] = success_answer or human_input.strip()
+        intent['users-and-stakeholders'] = users_answer
+        intent['scope'] = scope_answer
+        intent['in-scope'] = scope_answer
+        intent['out-of-scope'] = scope_answer
+        intent['success-signals'] = success_answer
+        intent['constraints'] = constraints_answer
+        intent['assumptions'] = 'Informações não fornecidas permanecem como desconhecidas.' if pt else 'Information not supplied remains unknown.'
+        intent['open-questions'] = 'Nenhuma questão adicional identificada.' if pt else 'No additional questions identified.'
+        intent['intent-status'] = 'Proposta não autoritativa.' if pt else 'Non-authoritative proposal.'
+
+        context['system-and-unit-boundary'] = '- Sistema: conforme a Intenção.\n- Unidade pai: não aplicável.\n- Tipo de unidade: system.'
+        context['existing-state'] = 'O estado atual não é presumido além das informações fornecidas.' if pt else 'The current state is not assumed beyond supplied information.'
+        context['dependencies'] = 'Nenhuma dependência é afirmada sem evidência.' if pt else 'No dependency is asserted without evidence.'
+        context['stakeholders-and-concerns'] = intent['users-and-stakeholders'] or ('Derivados da Intenção.' if pt else 'Derived from the Intent.')
+        context['environments'] = 'A definir nas etapas apropriadas.' if pt else 'To be defined in the appropriate stages.'
+        context['applicable-standards-and-policies'] = intent['constraints'] or ('A avaliar nas etapas apropriadas.' if pt else 'To be assessed in the appropriate stages.')
+        context['open-questions'] = intent['open-questions']
+        context['governing-intent'] = '`engineering/intent/intent.md`'
+        questions = []
         if '[[QUESTION:' in human_input and not answers:
-            questions=[{'id':'QST-001','question':'Informe a restrição de negócio ausente representada por [[QUESTION:...]].' if pt else 'Please provide the missing business constraint represented by [[QUESTION:...]].','why':'O Intent inicial sinaliza explicitamente informação ausente.' if pt else 'The initial Intent explicitly signals missing information.','blocking':True}]
-        intent=human_input.strip()+'\n\n## Intent refinement\n\n- '+('O Intent autoritativo será estabelecido somente após a aprovação humana desta proposta.' if pt else 'The authoritative intent will be established only after human approval of this proposal.')+'\n'
-        context='# Engineering Context — default\n\n## System and unit boundary\n\n- System: '+('O sistema descrito pelo Intent humano.' if pt else 'The system described by the human Intent.')+'\n- Unit type: system\n- In scope: '+('Conforme declarado no Intent.' if pt else 'As stated in the Intent.')+'\n\n## Existing state\n\n'+('O estado inicial não é presumido além das informações fornecidas pelo humano.' if pt else 'The initial state is not assumed beyond the information provided by the human.')+'\n\n## Dependencies\n\n'+('Nenhuma dependência é afirmada sem evidência.' if pt else 'No dependency is asserted without evidence.')+'\n\n## Stakeholders and concerns\n\n'+('Derivados apenas do Intent; stakeholders desconhecidos permanecem desconhecidos.' if pt else 'Derived only from the Intent; unknown stakeholders remain unknown.')+'\n\n## Environments\n\n'+('A definir durante a descoberta de engenharia.' if pt else 'To be determined during engineering discovery.')+'\n\n## Applicable standards and policies\n\n'+('A metodologia exige que controles aplicáveis de qualidade, segurança e ciclo de vida sejam avaliados nas etapas posteriores.' if pt else 'The methodology requires applicable quality, security and lifecycle controls to be assessed in later stages.')+'\n\n## Open questions\n\n'+('Nenhuma além das questões da proposta.' if pt else 'None beyond the proposal questions.')+'\n\nStatus: Proposed\n'
-        if answers:
-            context+='\n## Human answers incorporated\n\n'+ '\n'.join(f'- {k}: {v["answer"]}' for k,v in sorted(answers.items()))+'\n'
-        return {'intent':intent,'context':context,'questions':questions}
-    def propose_document(self,m,stage,c):
-        t=load_template(m,stage,c.language)
-        pt=c.language.lower().startswith('pt')
-        reps={'[Unit key]':c.unit,'[Owner]':'Responsável humano' if pt else 'Human owner','[Item]':f'Trabalho dentro do escopo aprovado de {c.unit}.' if pt else f'Work within approved scope of {c.unit}.','[Question]':'Nenhuma questão bloqueante identificada pelo provedor determinístico.' if pt else 'No blocking question identified by the deterministic provider.','[Expected result]':'O comportamento aprovado é satisfeito e verificado.' if pt else 'The approved behavior is satisfied and verified.','[Evidence]':'Evidência de verificação em execução.' if pt else 'Runtime verification evidence.','[Decision]':'Seguir os artefatos upstream aprovados.' if pt else 'Follow approved upstream artifacts.','[Constraint]':'Restrições aprovadas do projeto.' if pt else 'Approved project constraints.','[Outcome]':'O resultado pretendido aprovado é alcançado.' if pt else 'The approved intended outcome is achieved.','[Pass / Fail / Blocked]':'Pass' if not pt else 'Pass'}
-        for a,b in reps.items(): t=t.replace(a,b)
-        return {'content':t,'questions':[]}
-    def propose_code(self,m,c):
-        return {'files':{'src/main.py':'def main():\n    return {"status": "ok"}\n','tests/test_main.py':'from src.main import main\n\ndef test_main():\n    assert main()["status"] == "ok"\n'},'questions':[]}
+            questions = [{'question': 'Informe a restrição de negócio ausente representada por [[QUESTION:...]].' if pt else 'Please provide the missing business constraint represented by [[QUESTION:...]].', 'why': 'O Intent inicial sinaliza explicitamente informação ausente.' if pt else 'The initial Intent explicitly signals missing information.', 'blocking': True}]
+        return {
+            'intent_sections': intent,
+            'context_sections': context,
+            'questions': questions,
+        }
+
+    def propose_document(self, m, stage, c):
+        sections = _generic_sections(m, stage, c.language, c.unit)
+        if m.stage(stage).config.get('aggregate_units'):
+            names = []
+            for key, meta in sorted(c.related_units.items()):
+                name = meta.get('name', key) if isinstance(meta, dict) else key
+                names.append(f'- {name} ({key})')
+            sections['engineering-unit-map'] = '\n'.join(names) if names else '- default'
+        return {'sections': sections, 'questions': []}
+
+    def propose_code(self, m, c):
+        return {
+            'files': {
+                'src/main.py': 'def main():\n    return {"status": "ok"}\n',
+                'tests/test_main.py': 'from src.main import main\n\ndef test_main():\n    assert main()["status"] == "ok"\n',
+            },
+            'questions': [],
+        }
+
 
 class OpenAIAgent(Agent):
-    name='openai'
-    def __init__(self,client=None):
-        if client is not None: self.client=client
+    name = 'openai'
+
+    def __init__(self, client=None):
+        if client is not None:
+            self.client = client
         else:
-            try: from openai import OpenAI
-            except ImportError as exc: raise ThesysError('The OpenAI SDK is not installed.') from exc
-            key=os.getenv('OPENAI_API_KEY')
-            if not key: raise ThesysError('OPENAI_API_KEY is not configured.')
-            self.client=OpenAI(api_key=key)
-        self.model=os.getenv('THESYS_OPENAI_MODEL','gpt-5.6-luna')
-    def _call(self,instructions,input_text,schema,name):
+            try:
+                from openai import OpenAI
+            except ImportError as exc:
+                raise ThesysError('The OpenAI SDK is not installed.') from exc
+            key = os.getenv('OPENAI_API_KEY')
+            if not key:
+                raise ThesysError('OPENAI_API_KEY is not configured.')
+            self.client = OpenAI(api_key=key)
+        self.model = os.getenv('THESYS_OPENAI_MODEL', 'gpt-5.6-luna')
+
+    def _call(self, instructions, input_text, schema, name):
         try:
-            r=self.client.responses.create(model=self.model,instructions=instructions,input=input_text,text={'format':{'type':'json_schema','name':name,'strict':True,'schema':schema}})
+            r = self.client.responses.create(
+                model=self.model,
+                instructions=instructions,
+                input=input_text,
+                text={'format': {'type': 'json_schema', 'name': name, 'strict': True, 'schema': schema}},
+            )
             return json.loads(r.output_text)
-        except Exception as exc: raise ThesysError(f'OpenAI request failed: {exc}') from exc
-    def propose_discovery(self,m,human_input,answers,project):
-        schema={'type':'object','properties':{'intent':{'type':'string','minLength':200},'context':{'type':'string','minLength':200},'questions':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'question':{'type':'string'},'why':{'type':'string'},'blocking':{'type':'boolean'}},'required':['id','question','why','blocking'],'additionalProperties':False}}},'required':['intent','context','questions'],'additionalProperties':False}
-        language=project_language(project,m.language)
-        language_rule=(f'Project language: {language}. Write all natural-language content you generate in this language. Preserve the canonical artifact structure in English: headings, section names, field labels, table headers, methodology-defined status tokens, identifiers, paths, and other structural labels must remain exactly as supplied by the templates. Do not translate or rename those structural elements. Template prose such as instructions beginning with Describe, Define, Record, Explain, or similar guidance is not final artifact content: replace it with project-language content or remove it. Do not leave English instructional prose or unresolved template placeholders in the final artifact. Translate or adapt only the human-readable content that you generate. Preserve the meaning of explicit human intent; do not invent facts.')
-        instructions=('Act as the Thesys discovery engineer. The human supplies the only initial authority. Transform it into a proposed Intent and Engineering Context. '+language_rule+' '
-                      'Discovery defines intent, not detailed requirements, specification, architecture, implementation, or operational procedures. Ask a focused question only when an unanswered issue changes an intent-level decision: purpose, desired outcome, scope boundary, primary users or stakeholders, material business constraint, high-level regulatory applicability, or measurable success criterion. '
-                      'Do not continue questioning merely to make the proposal implementation-ready. Do not ask for downstream detail such as exact cloud regions/services, database fields or models, retention periods by data class, API/provider configuration, detailed permission matrices, exact subscription state machines, detailed measurement procedures, technical controls, or other decisions that belong in Requirements, Specification, Architecture, or later stages. '
-                      'If the remaining unknowns can be resolved downstream without changing the intent, treat Discovery as converged and return no new questions. Distinguish known facts, assumptions, and unknowns. The proposal is non-authoritative and requires human approval. If previous human answers exist, incorporate them and ask only remaining intent-level questions.')
-        inp=f'Human Intent Input:\n{human_input}\n\nPrevious human answers:\n{json.dumps(answers,ensure_ascii=False,indent=2)}\n\nProject metadata:\n{(project/".thesys/project.yaml").read_text(encoding="utf-8")}\n\nIntent template:\n{load_template(m,"intent")}\n\nContext template:\n{load_template(m,"context")}'; return self._call(instructions,inp,schema,'thesys_discovery')
-    def propose_document(self,m,stage,c):
-        schema={'type':'object','properties':{'content':{'type':'string','minLength':200},'questions':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'question':{'type':'string'},'why':{'type':'string'},'blocking':{'type':'boolean'}},'required':['id','question','why','blocking'],'additionalProperties':False}}},'required':['content','questions'],'additionalProperties':False}
-        language_rule=(f'Project language: {c.language}. Write all natural-language content you generate in this language. Preserve the canonical artifact structure in English: headings, section names, field labels, table headers, methodology-defined status tokens, identifiers, paths, and other structural labels must remain exactly as supplied by the template. Do not translate or rename those structural elements. Template prose such as instructions beginning with Describe, Define, Record, Explain, or similar guidance is not final artifact content: replace it with project-language content or remove it. Do not leave English instructional prose or unresolved template placeholders in the final artifact. Translate or adapt only the human-readable content that you generate.')
-        instructions=('Produce a non-authoritative Thesys artifact proposal for the requested lifecycle stage. Use only authoritative inputs and answered questions. '+language_rule+' Do not invent facts, decisions, approvals, evidence, technologies or test results. Identify material uncertainty as explicit questions. Ask the human only questions that materially affect approval of the current lifecycle stage. Set blocking=true only when the unanswered question must be resolved before the current stage can be approved as an authoritative baseline. If a decision can be deferred to a downstream stage such as Implementation, Verification, Release, Operation or Evolution without invalidating the current stage baseline, do not mark the question as blocking. Do not ask for implementation details, configuration details, operational assignments, test evidence, production evidence or compliance evidence merely because they will be required later. When such downstream information is required later but does not prevent approval of the current baseline, record it explicitly in the artifact as a future condition, dependency, evidence requirement or release gate, as appropriate, and set blocking=false. A question that blocks a future release or later lifecycle activity is not automatically a blocking question for the current stage. Do not create a question solely to make the current proposal implementation-ready.')
-        inp=f'Stage: {stage}\nUnit: {c.unit}\nScope: {c.unit_scope}\nAuthoritative artifacts:\n{json.dumps(c.approved_artifacts,ensure_ascii=False,indent=2)}\nHuman answers:\n{json.dumps(c.answers,ensure_ascii=False,indent=2)}\nTemplate:\n{load_template(m,stage,c.language)}'; return self._call(instructions,inp,schema,'thesys_stage_proposal')
-    def propose_code(self,m,c):
-        schema={'type':'object','properties':{'files':{'type':'array','items':{'type':'object','properties':{'path':{'type':'string'},'content':{'type':'string'}},'required':['path','content'],'additionalProperties':False}},'questions':{'type':'array','items':{'type':'object','properties':{'id':{'type':'string'},'question':{'type':'string'},'why':{'type':'string'},'blocking':{'type':'boolean'}},'required':['id','question','why','blocking'],'additionalProperties':False}}},'required':['files','questions'],'additionalProperties':False}
-        instructions=(f'Generate a non-authoritative implementation proposal from the approved engineering artifacts. Project language: {c.language}. Write human-readable comments and docstrings in the project language, while preserving code identifiers, API names, file paths, commands, and other technical syntax. Return only relative paths under the methodology allowed roots. Never include secrets. Do not claim tests were executed. If implementation depends on a material unknown, ask a blocking question instead of guessing.')
-        inp=f'Unit: {c.unit}\nScope: {c.unit_scope}\nAuthoritative artifacts:\n{json.dumps(c.approved_artifacts,ensure_ascii=False,indent=2)}\nHuman answers:\n{json.dumps(c.answers,ensure_ascii=False,indent=2)}'; return self._call(instructions,inp,schema,'thesys_implementation_proposal')
+        except Exception as exc:
+            raise ThesysError(f'OpenAI request failed: {exc}') from exc
+
+    def _prompt_catalog(self, methodology):
+        path = methodology.root / "methodology" / "agents" / "prompts.json"
+        if not path.is_file():
+            raise ThesysError(f"Agent prompt catalog not found: {path}")
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ThesysError(f"Invalid agent prompt catalog: {path}") from exc
+
+    def _language_rule(self, language):
+        return (
+            f'Project language: {language}. All natural-language artifact content and all human-facing questions must be written in that language. '
+            'The template defines the document structure and headings; do not generate Markdown headings, titles, section labels, template instructions, or placeholders. '
+            'Return content only for the section keys defined by the JSON schema. Preserve identifiers, artifact IDs, paths and schema enum values exactly. '
+            'Clarification question IDs (QST-NNN) are runtime-owned. Never reproduce them in artifact content or assign them to questions. '
+            'This prohibition also applies when incorporating human answers, explaining resolved decisions, writing traceability sections, or describing the basis for a decision. '
+            'Questions and their IDs belong exclusively to proposal metadata and clarification history. If a human answer resolves a question, incorporate the resulting decision directly without mentioning the question ID, question text, or clarification rationale. '
+            'Never copy QST-NNN identifiers from the input, clarification history, human answers, or previous proposals into artifact content. '
+            'For pt-BR, do not use English normative words such as shall, must or should in natural-language content.'
+        )
+
+    def _stage_prompt(self, methodology, stage):
+        catalog = self._prompt_catalog(methodology)
+        common = catalog.get('common', [])
+        specific = catalog.get('stages', {}).get(stage, [])
+        return ' '.join([*common, *specific])
+
+    def propose_discovery(self, m, human_input, answers, project):
+        language = project_language(project, m.language)
+        intent_schema = template_schema(m, 'intent')
+        context_schema = template_schema(m, 'context')
+        schema = {
+            'type': 'object',
+            'properties': {
+                'intent_sections': intent_schema,
+                'context_sections': context_schema,
+                'questions': {'type': 'array', 'items': _question_schema()},
+            },
+            'required': ['intent_sections','context_sections','questions'],
+            'additionalProperties': False,
+        }
+        instructions = (
+            self._language_rule(language) + ' ' +
+            ' '.join(self._prompt_catalog(m).get('common', [])) + ' ' +
+            ' '.join(self._prompt_catalog(m).get('discovery', [])) + ' ' +
+            'Fill every section key with substantive content; an intentionally empty section is allowed only when the source genuinely does not support content.'
+        )
+        inp = (
+            f'Human Intent Input:\n{human_input}\n\n'
+            f'Previous human answers:\n{json.dumps(answers, ensure_ascii=False, indent=2)}\n\n'
+            f'Project metadata:\n{(project/".thesys/project.yaml").read_text(encoding="utf-8")}\n\n'
+            f'Intent structural contract:\n{json.dumps(template_schema(m,"intent"), ensure_ascii=False, indent=2)}\n\n'
+            f'Context structural contract:\n{json.dumps(template_schema(m,"context"), ensure_ascii=False, indent=2)}'
+        )
+        return self._call(instructions, inp, schema, 'thesys_discovery_structured')
+
+    def propose_document(self, m, stage, c):
+        schema = {
+            'type': 'object',
+            'properties': {
+                'sections': template_schema(m, stage),
+                'questions': {'type': 'array', 'items': _question_schema()},
+            },
+            'required': ['sections','questions'],
+            'additionalProperties': False,
+        }
+        language_rule = self._language_rule(c.language)
+        integration_rule = ''
+        if m.stage(stage).config.get('aggregate_units'):
+            integration_rule = (
+                ' For system-architecture, synthesize only from the approved Architecture artifacts supplied for the relevant Engineering Units. '
+                'Preserve their boundaries and dependencies; do not invent unsupported system-level architecture.'
+            )
+        instructions = (
+            self._stage_prompt(m, stage) + ' ' +
+            'Produce a non-authoritative Thesys artifact proposal using only the supplied authoritative inputs, artifact index, human answers and clarification history. ' +
+            'Every artifact supplied under Authoritative artifacts is already human-approved and authoritative for this stage. ' +
+            'Never ask whether an authoritative artifact, decision, requirement, clarification, or governance record is approved; its presence establishes authority. ' +
+            self._language_rule(c.language) + ' ' +
+            'The lifecycle below is authoritative for stage responsibilities and dependencies. For every question, apply the methodology question-blocking policy using the complete lifecycle, current stage, approved upstream artifacts, unit metadata and purpose of the decision. ' +
+            'The model owns the semantic blocking decision; the runtime does not reinterpret it by topic, keyword or stage-specific heuristic. ' +
+            'If blocking=false because a later stage owns the detail, explain that in why. If no material question remains, return an empty question list. ' +
+            'Human answers are evidence that must be evaluated, not proof that the corresponding decision was resolved. ' +
+            'For every previously blocking question in clarification history, if the answer resolves the decision materially, do not ask it again and incorporate the resulting decision without mentioning its question ID. If it does not resolve the decision, return a new blocking question without an ID. ' +
+            'Questions are proposal metadata, never artifact content. Never place unresolved questions, pending decisions or their rationales in artifact sections. ' +
+            'When referencing upstream artifacts, use the exact IDs and paths from the Artifact index. Do not invent, renumber or substitute artifact identifiers.'
+        )
+        inp = (
+            f'Stage: {stage}\nUnit: {c.unit}\nScope: {c.unit_scope}\n'
+            f'Authoritative Unit metadata:\n{json.dumps({"key":c.unit,"type":c.unit_type,"parent":c.unit_parent,"dependencies":list(c.unit_dependencies)}, ensure_ascii=False, indent=2)}\n\n'
+            f'Authoritative artifacts:\n{json.dumps(c.approved_artifacts, ensure_ascii=False, indent=2)}\n\n'
+            f'Artifact index (authoritative IDs and paths):\n{json.dumps(c.artifact_index, ensure_ascii=False, indent=2)}\n\n'
+            f'Human answers:\n{json.dumps(c.answers, ensure_ascii=False, indent=2)}\n\n'
+            f'Clarification history for this stage and unit:\n{json.dumps(c.clarification_history, ensure_ascii=False, indent=2)}\n\n'
+            f'Related Unit architecture inputs:\n{json.dumps(c.related_units, ensure_ascii=False, indent=2)}\n\n'
+            f'Structural contract:\n{json.dumps(template_schema(m,stage), ensure_ascii=False, indent=2)}\n\n'
+            f'Complete lifecycle contract:\n{json.dumps(_lifecycle_question_context(m, stage), ensure_ascii=False, indent=2)}'
+        )
+        return self._call(instructions, inp, schema, 'thesys_stage_proposal_structured')
+
+    def propose_code(self, m, c):
+        schema = {
+            'type': 'object',
+            'properties': {
+                'files': {'type': 'array', 'items': {'type':'object','properties':{'path':{'type':'string'},'content':{'type':'string'}},'required':['path','content'],'additionalProperties':False}},
+                'questions': {'type':'array','items': _question_schema()},
+            },
+            'required': ['files','questions'], 'additionalProperties': False,
+        }
+        instructions = (
+            f'Generate a non-authoritative implementation proposal from approved engineering artifacts. Project language: {c.language}. '
+            'Write human-readable comments and docstrings in the project language while preserving code syntax, identifiers, paths and API names. '
+            'Return only relative paths under allowed roots. Never include secrets or claim that tests were executed.'
+        )
+        inp = f'Unit: {c.unit}\nScope: {c.unit_scope}\nAuthoritative artifacts:\n{json.dumps(c.approved_artifacts,ensure_ascii=False,indent=2)}\nHuman answers:\n{json.dumps(c.answers,ensure_ascii=False,indent=2)}'
+        return self._call(instructions, inp, schema, 'thesys_implementation_proposal')
+
 
 def get_agent(name):
-    if name=='mock': return MockAgent()
-    if name=='openai': return OpenAIAgent()
+    if name == 'mock':
+        return MockAgent()
+    if name == 'openai':
+        return OpenAIAgent()
     raise ThesysError(f'Unknown agent provider: {name}')

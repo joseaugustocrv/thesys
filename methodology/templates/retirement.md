@@ -13,5 +13,3 @@
 ## Operational shutdown
 
 ## Evidence and approvals
-
-Status: Draft

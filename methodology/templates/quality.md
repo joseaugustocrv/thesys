@@ -18,5 +18,3 @@
 ## Observability
 
 ## Quality evidence
-
-Status: Draft
