@@ -1,4 +1,4 @@
-import hashlib, json
+import hashlib, json, re
 from datetime import datetime, timezone
 from .errors import ProjectError
 from .io import read_text, write_text
@@ -7,6 +7,25 @@ from .questions import allocate_question_id, validate_question_id
 from .guidance import guidance_inputs, guidance_fingerprint
 
 def sha(s): return hashlib.sha256(s.encode('utf-8')).hexdigest()
+
+
+def _question_similarity(left: str, right: str) -> float:
+    """Return token Jaccard similarity for clarification-question matching."""
+    left_tokens = {
+        token
+        for token in re.findall(r"\w+", left.lower(), flags=re.UNICODE)
+        if len(token) > 2
+    }
+    right_tokens = {
+        token
+        for token in re.findall(r"\w+", right.lower(), flags=re.UNICODE)
+        if len(token) > 2
+    }
+
+    if not left_tokens or not right_tokens:
+        return 0.0
+
+    return len(left_tokens & right_tokens) / len(left_tokens | right_tokens)
 
 
 def _project_scope_id(project):

@@ -310,14 +310,9 @@ def generate_unit_proposal(project, provider="openai", methodology=None):
     path = proposal_path(project)
     if path.is_file():
         data, _ = read_proposal(project)
-        status = data.get("status")
-        if status == "accepted":
+        if data.get("status") == "accepted":
             raise ProjectError("Engineering unit proposal has already been accepted.")
-        if status != "needs_regeneration":
-            raise ProjectError("An Engineering Units proposal already exists; review or accept it before generating another.")
-        # A stale/non-authoritative proposal is explicitly eligible for regeneration.
-        # The new proposal replaces the current working copy while the registry/event
-        # history preserves the fact that the previous proposal existed.
+        raise ProjectError("An Engineering Units proposal already exists; review or accept it before generating another.")
     agent = MockUnitAgent() if provider == "mock" else OpenAIUnitAgent() if provider == "openai" else None
     if agent is None:
         raise ThesysError(f"Unknown unit proposal agent: {provider}")

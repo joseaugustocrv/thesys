@@ -210,6 +210,7 @@ def guidance_inputs(project: Path, methodology, stage, unit) -> dict:
     result = {}
     for item in applicable_guidance(project, methodology, stage, unit):
         result[item["id"]] = {
+            "id": item["id"],
             "type": item.get("type"),
             "stage": item.get("stage"),
             "unit": item.get("unit"),
@@ -218,6 +219,34 @@ def guidance_inputs(project: Path, methodology, stage, unit) -> dict:
             "attachment": item.get("attachment"),
         }
     return result
+
+
+def direct_guidance_inputs(project: Path, methodology, stage, unit) -> dict:
+    """Return only guidance directly attached to the requested stage/unit.
+
+    This is intentionally different from ``guidance_inputs``: the Engine uses
+    the latter as propagated generation context, while documentation should
+    show only guidance explicitly attached to the artifact being viewed.
+    """
+    from .workflow import stage_unit
+
+    current_unit = stage_unit(project, methodology, stage, unit)
+    result = {}
+    for item in list_guidance(project):
+        if item.get("status") != "active" or item.get("stage") != stage.id:
+            continue
+        source_stage = methodology.stage(item["stage"])
+        if source_stage.config.get("scope") == "project" or item.get("unit") == current_unit:
+            result[item["id"]] = {
+                "id": item["id"],
+                "type": item.get("type"),
+                "stage": item.get("stage"),
+                "unit": item.get("unit"),
+                "title": item.get("title"),
+                "content": item.get("content", ""),
+                "attachment": item.get("attachment"),
+            }
+    return dict(sorted(result.items(), key=lambda pair: (pair[1].get("created_at", ""), pair[0])))
 
 
 def guidance_fingerprint(project: Path, methodology, stage, unit) -> str:

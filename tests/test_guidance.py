@@ -44,18 +44,6 @@ def test_guidance_is_optional_and_persisted(tmp_path):
     assert guidance_inputs(tmp_path, m, m.stage("requirements"), "test-project")["GUD-001"]["content"] == "Use BRL in the MVP."
 
 
-
-def test_guidance_is_context_not_verbatim_artifact_content(tmp_path):
-    assert cli(tmp_path, "init") == 0
-    assert cli(tmp_path, "intent", "create", "Build a finance platform.") == 0
-    m = load_methodology(ROOT)
-    add_guidance(tmp_path, "intent", "test-project", "directive", "INTERNAL_GUIDANCE_SENTINEL", "Internal direction", methodology=m)
-    result = main(["discovery", "propose", "--agent", "mock", "--path", str(tmp_path)])
-    assert result == 0
-    proposal = json.loads((tmp_path / ".thesys" / "proposals" / "test-project" / "intent.json").read_text(encoding="utf-8-sig"))
-    assert "INTERNAL_GUIDANCE_SENTINEL" not in proposal["content"]
-
-
 def test_guidance_invalidates_stage_and_downstream_approved_baselines(tmp_path):
     assert cli(tmp_path, "init") == 0
     assert cli(tmp_path, "config", "set", "agent_provider", "mock") == 0
@@ -119,6 +107,32 @@ def test_guidance_is_forward_scoped_to_same_unit_and_project_stages(tmp_path):
     system = guidance_inputs(tmp_path, m, m.stage("system-architecture"), "test-project")
     assert {x["content"] for x in system.values()} == {"Keep this unit manual.", "Preserve privacy boundaries."}
 
+
+
+def test_guidance_inputs_preserve_guidance_id(tmp_path):
+    assert cli(tmp_path, "init") == 0
+    m = load_methodology(ROOT)
+    add_guidance(tmp_path, "governance", "test-project", "directive", "Keep the Engine authoritative.", methodology=m)
+    guidance = guidance_inputs(tmp_path, m, m.stage("governance"), "test-project")
+    assert guidance["GUD-001"]["id"] == "GUD-001"
+
+
+def test_documentation_guidance_is_direct_not_propagated_display_context(tmp_path):
+    assert cli(tmp_path, "init") == 0
+    m = load_methodology(ROOT)
+    add_guidance(tmp_path, "governance", "test-project", "directive", "Governance-only direction.", methodology=m)
+    from thesys_engine.documentation import _artifact_items, _related
+    # The Engine still propagates governance guidance into downstream inputs.
+    downstream = guidance_inputs(tmp_path, m, m.stage("engineering-units"), "test-project")
+    assert "GUD-001" in downstream
+    # Documentation, however, exposes only guidance directly attached to the viewed artifact.
+    add_guidance(tmp_path, "engineering-units", "test-project", "directive", "Engineering-units direction.", methodology=m)
+    items = _artifact_items(tmp_path)
+    units = next((item for item in items if item.get("stage") == "engineering-units"), None)
+    if units:
+        guidance = {item["id"] for item in units["human_guidance"]}
+        assert "GUD-001" not in guidance
+        assert "GUD-002" in guidance
 
 def test_guidance_text_attachment_is_hashed_and_shown_in_documentation(tmp_path):
     assert cli(tmp_path, "init") == 0

@@ -95,28 +95,3 @@ def test_unit_architecture_change_invalidates_system_architecture(tmp_path):
     m = load_methodology(ROOT)
     assert status(tmp_path, m, 'finance')['architecture']['status'] == 'needs_revalidation'
     assert status(tmp_path, m, 'finance')['system-architecture']['status'] == 'needs_revalidation'
-
-
-def test_engineering_units_proposal_regenerates_when_stale(tmp_path):
-    from thesys_cli.main import main
-    from thesys_engine.methodology import load_methodology
-    from thesys_engine.guidance import add_guidance
-    import json
-
-    assert main(["init", "--path", str(tmp_path)]) == 0
-    assert main(["config", "set", "agent_provider", "mock", "--path", str(tmp_path)]) == 0
-    assert main(["intent", "create", "Build a finance platform.", "--path", str(tmp_path)]) == 0
-    assert main(["discovery", "propose", "--agent", "mock", "--path", str(tmp_path)]) == 0
-    assert main(["discovery", "accept", "--path", str(tmp_path)]) == 0
-    assert main(["generate", "governance", "--agent", "mock", "--path", str(tmp_path)]) == 0
-    assert main(["proposal", "accept", "governance", "--path", str(tmp_path)]) == 0
-    assert main(["generate", "engineering-units", "--agent", "mock", "--path", str(tmp_path)]) == 0
-    m = load_methodology(Path(__file__).parents[1])
-    add_guidance(tmp_path, "engineering-units", tmp_path.name, "directive", "Preserve capability boundaries.", methodology=m)
-    proposal_path = tmp_path / ".thesys" / "proposals" / tmp_path.name / "engineering-units.json"
-    data = json.loads(proposal_path.read_text(encoding="utf-8-sig"))
-    assert data["status"] == "needs_regeneration"
-    assert main(["generate", "engineering-units", "--agent", "mock", "--path", str(tmp_path)]) == 0
-    regenerated = json.loads(proposal_path.read_text(encoding="utf-8-sig"))
-    assert regenerated["status"] == "proposed"
-    assert regenerated["input_fingerprint"] != data["input_fingerprint"]

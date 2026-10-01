@@ -255,6 +255,30 @@ def test_docs_phase_groups_expose_status_and_collapse_affordance(tmp_path):
     assert 'nav-phase' in html
 
 
+
+
+def test_documentation_presents_names_before_ids_and_guidance_ids(tmp_path):
+    from thesys_engine.guidance import add_guidance
+    from thesys_engine.methodology import load_methodology
+    main(['init','--path',str(tmp_path)])
+    main(['config','set','language','pt-BR','--path',str(tmp_path)])
+    main(['config','set','agent_provider','mock','--path',str(tmp_path)])
+    main(['intent','create','Criar um sistema de testes de documentação.','--path',str(tmp_path)])
+    main(['next','--path',str(tmp_path)])
+    main(['discovery','accept','--path',str(tmp_path)])
+    main(['next','--path',str(tmp_path)])
+    main(['proposal','accept','governance','--path',str(tmp_path)])
+    m=load_methodology(Path(__file__).parents[1])
+    add_guidance(tmp_path,'governance',tmp_path.name,'directive','Preserve the original boundary.','Limite de governança',methodology=m)
+    main(['docs','build','--path',str(tmp_path)])
+    html=(tmp_path/'.thesys/docs/index.html').read_text(encoding='utf-8-sig')
+    assert 'GUD-001' in html
+    assert 'Limite de governança' in html
+    assert 'x.title} · ${x.id}' in html
+    assert '<strong>${esc(r.title)}</strong><span>${esc(id)}</span>' in html
+    assert "g.id||''" in html
+    assert '${esc(g.title||g.type)}' in html
+
 def test_presentation_docs_do_not_expose_human_guidance(tmp_path):
     from thesys_cli.main import main
     from thesys_engine.guidance import add_guidance

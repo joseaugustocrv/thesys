@@ -112,8 +112,9 @@ class MockAgent(Agent):
         scope_answer = answer_containing('escopo')
         success_answer = answer_containing('sucesso') or answer_containing('resultado observável')
         constraints_answer = answer_containing('restrições') or answer_containing('regulat')
-        # Guidance is contextual input, not text to copy into the artifact.
-        # The mock agent therefore models only the semantic source answers here.
+        guidance_text = '\n'.join(str(item.get('content', '')) for item in (guidance or {}).values() if item.get('content'))
+        if guidance_text:
+            constraints_answer = (constraints_answer + '\n' + guidance_text).strip()
         intent['desired-outcome'] = success_answer or human_input.strip()
         intent['users-and-stakeholders'] = users_answer
         intent['scope'] = scope_answer
@@ -237,7 +238,7 @@ class OpenAIAgent(Agent):
             self._language_rule(language) + ' ' +
             ' '.join(self._prompt_catalog(m).get('common', [])) + ' ' +
             ' '.join(self._prompt_catalog(m).get('discovery', [])) + ' ' +
-            'Human guidance is optional and non-authoritative. Use applicable guidance to orient discovery, but treat it as generation context rather than artifact content: do not copy or quote guidance verbatim into Intent or Context. Incorporate only applicable resulting decisions or constraints. Never silently override an approved artifact or decision. If guidance conflicts materially with authoritative context, surface the conflict through a blocking question.' + ' ' +
+            'Human guidance is optional and non-authoritative. Use applicable guidance to orient discovery, but never silently override an approved artifact or decision. If guidance conflicts materially with authoritative context, surface the conflict through a blocking question.' + ' ' +
             'Fill every section key with substantive content; an intentionally empty section is allowed only when the source genuinely does not support content.'
         )
         inp = (
@@ -270,7 +271,7 @@ class OpenAIAgent(Agent):
         instructions = (
             self._stage_prompt(m, stage) + ' ' +
             'Produce a non-authoritative Thesys artifact proposal using only the supplied authoritative inputs, artifact index, human answers, clarification history and applicable human guidance. ' +
-            'Human guidance is optional and non-authoritative: use it to orient the proposal, but never silently override an authoritative artifact or approved decision. Treat guidance as generation context, not as artifact content. Do not copy, quote or reproduce guidance text verbatim in the artifact merely because it was supplied as guidance; incorporate only the resulting decision, constraint or consequence that is applicable to the current stage. If guidance conflicts with authoritative context, surface the conflict as a blocking question when it materially affects the current stage. ' +
+            'Human guidance is optional and non-authoritative: use it to orient the proposal, but never silently override an authoritative artifact or approved decision. If guidance conflicts with authoritative context, surface the conflict as a blocking question when it materially affects the current stage. ' +
             'Every artifact supplied under Authoritative artifacts is already human-approved and authoritative for this stage. ' +
             'Never ask whether an authoritative artifact, decision, requirement, clarification, or governance record is approved; its presence establishes authority. ' +
             self._language_rule(c.language) + ' ' +

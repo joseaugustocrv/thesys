@@ -7,7 +7,7 @@ from pathlib import Path
 from .io import read_text, write_text
 from .registry import get
 from .workflow import _load_answers, _clarification_history_for, proposal_is_stale
-from .guidance import guidance_inputs
+from .guidance import direct_guidance_inputs, guidance_inputs
 from .project import project_language, project_key
 
 
@@ -30,7 +30,7 @@ from pathlib import Path
 from .io import read_text, write_text
 from .registry import get
 from .workflow import _load_answers, _clarification_history_for, proposal_is_stale
-from .guidance import guidance_inputs
+from .guidance import direct_guidance_inputs, guidance_inputs
 from .project import project_language, project_key
 
 
@@ -268,7 +268,7 @@ def _artifact_items(project):
         unit = item.get("unit", project_key(project))
         stage = _artifact_stage(project, path, unit)
         history = _clarification_history_for(project, stage, unit) if stage else []
-        guidance = guidance_inputs(project, METHODOLOGY, METHODOLOGY.stage(stage), unit) if stage else {}
+        guidance = direct_guidance_inputs(project, METHODOLOGY, METHODOLOGY.stage(stage), unit) if stage else {}
         items.append({
             "id": aid,
             "type": item.get("type", "artifact"),
@@ -370,9 +370,10 @@ def _proposal_items(project):
                     if not isinstance(unit_item, dict):
                         continue
                     key = str(unit_item.get("key", "")).strip()
+                    name = str(unit_item.get("name", "")).strip() or key
                     rationale = str(unit_item.get("rationale", "")).strip()
                     if key and rationale:
-                        rationale_lines.extend(["", f"## {key}", "", rationale])
+                        rationale_lines.extend(["", f"## {name}", "", f"**Chave:** `{key}`", "", rationale])
                 content = "\n".join(lines + rationale_lines).strip()
         try:
             stale = data.get("status") == "needs_regeneration" or proposal_is_stale(project, METHODOLOGY, stage, unit, data)
@@ -384,7 +385,7 @@ def _proposal_items(project):
             state = "blocked"
         else:
             state = "proposed"
-        guidance = guidance_inputs(project, METHODOLOGY, METHODOLOGY.stage(stage), unit)
+        guidance = direct_guidance_inputs(project, METHODOLOGY, METHODOLOGY.stage(stage), unit)
         result.append({
             "id": data.get("proposal_id", f"PROP:{stage}:{unit}"),
             "type": code,
@@ -482,7 +483,7 @@ def _related(project, item, artifacts, proposals, answers):
             q = dict(q)
             q["answer"] = answers.get(q.get("id"), {}).get("answer")
             questions.append(q)
-    guidance = guidance_inputs(project, METHODOLOGY, METHODOLOGY.stage(stage), item.get("unit")) if stage in {s.id for s in METHODOLOGY.stages} else {}
+    guidance = direct_guidance_inputs(project, METHODOLOGY, METHODOLOGY.stage(stage), item.get("unit")) if stage in {s.id for s in METHODOLOGY.stages} else {}
     return related, questions, list(guidance.values())
 
 
@@ -753,7 +754,7 @@ function renderNav(filter=''){
     }
     const count=existing.length;
     const approvedCount=existing.filter(x=>!x.proposal && x.approval?.state==='approved').length;
-    const children=xs.sort((a,b)=>a.id.localeCompare(b.id)).map(x=>`<button class="nav-item ${x.proposal?'proposal-item':''}" data-id="${esc(x.id)}"><span><i class="item-dot ${itemState(x)}"></i>${esc(x.proposal?'Proposta · ':'')}${esc(label)} · ${esc(x.id)}</span><small>${esc(x.title)}</small></button>`).join('');
+    const children=xs.sort((a,b)=>a.id.localeCompare(b.id)).map(x=>`<button class="nav-item ${x.proposal?'proposal-item':''}" data-id="${esc(x.id)}"><span><i class="item-dot ${itemState(x)}"></i>${esc(x.proposal?'Proposta · ':'')}${esc(x.title||label)}</span><small>${esc(x.id)}</small></button>`).join('');
     const stageCountLabel=state==='approved' ? `${approvedCount}/${count} __UI_APPROVED_COUNT__` : ({completed:'__UI_COMPLETED__',blocked:'__UI_BLOCKED__',review:'__UI_REVIEW__',attention:'__UI_ATTENTION__','in-progress':'__UI_IN_PROGRESS__',documented:'__UI_DOCUMENTED__',pending:'__UI_PENDING__'}[state] || '__UI_PENDING__');
     return `<details class="nav-stage-group" data-stage="${esc(code)}"${q?' open':''}><summary class="nav-stage ${state}"><span class="stage-dot"></span><div><strong>${esc(label)}</strong><small>${stageCountLabel}</small></div><span class="nav-chevron">›</span></summary><div class="nav-phase-items">${children}</div></details>`;
   }
@@ -768,7 +769,7 @@ function renderNav(filter=''){
   const supportHtml=supportTypes.map(type=>{
     const xs=DATA.filter(x=>x.type===type && (!q || (`${x.id} ${x.title} ${x.path} ${x.html}`).toLowerCase().includes(q)));
     if(!xs.length) return '';
-    return `<div class="nav-group"><div class="nav-title">${esc(type)}</div>${xs.sort((a,b)=>a.id.localeCompare(b.id)).map(x=>`<button class="nav-item" data-id="${esc(x.id)}"><span><i class="item-dot ${itemState(x)}"></i>${esc(x.id)}</span><small>${esc(x.title)}</small></button>`).join('')}</div>`;
+    return `<div class="nav-group"><div class="nav-title">${esc(type)}</div>${xs.sort((a,b)=>a.id.localeCompare(b.id)).map(x=>`<button class="nav-item" data-id="${esc(x.id)}"><span><i class="item-dot ${itemState(x)}"></i>${esc(x.title||type)}</span><small>${esc(x.id)}</small></button>`).join('')}</div>`;
   }).join('');
   nav.innerHTML=`<div class="nav-section"><div class="nav-title">Lifecycle</div>${lifecycleHtml}</div>${supportHtml?`<div class="nav-section support"><div class="nav-title">Supporting artifacts</div>${supportHtml}</div>`:''}`;
   nav.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>select(b.dataset.id));
@@ -790,15 +791,15 @@ function select(id, push=true){
   const x=byId[id]; if(!x) return;
   current=x;
   doc.innerHTML=x.html;
-  document.getElementById('crumb').textContent=`${x.id} · ${x.title}`;
+  document.getElementById('crumb').textContent=`${x.title} · ${x.id}`;
   approvalPanel.innerHTML=`<div class="approval ${esc(x.approval?.state||'not-approved')}"><strong>${esc(x.approval?.label||'Approval state unavailable')}</strong>${x.approval?.approved_at?`<small>Approved ${esc(new Date(x.approval.approved_at).toLocaleString())}</small>`:''}</div>`;
-  related.innerHTML=(x.related||[]).map(id=>{const r=byId[id]; return r?`<button class="ref" data-id="${esc(id)}"><strong>${esc(id)}</strong><span>${esc(r.title)}</span></button>`:''}).join('') || '<p class="muted">__UI_NO_RELATED__</p>';
+  related.innerHTML=(x.related||[]).map(id=>{const r=byId[id]; return r?`<button class="ref" data-id="${esc(id)}"><strong>${esc(r.title)}</strong><span>${esc(id)}</span></button>`:''}).join('') || '<p class="muted">__UI_NO_RELATED__</p>';
   related.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>select(b.dataset.id));
   questions.innerHTML=(x.questions||[]).map(q=>`<div class="question"><strong>${esc(q.id)}</strong><p>${esc(q.question)}</p><span class="badge ${q.blocking?'blocking':'nonblocking'}">${q.blocking?'blocking':'non-blocking'}</span>${q.answer?`<div class="answer"><b>__UI_ANSWER__</b><p>${esc(q.answer)}</p></div>`:'<div class="muted">__UI_UNANSWERED__</div>'}</div>`).join('') || '<p class="muted">__UI_NO_QUESTIONS__</p>';
   const itemHistory=x.clarification_history||[];
   history.innerHTML=itemHistory.map(q=>`<div class="question"><strong>${esc(q.id)}</strong><p>${esc(q.question)}</p><span class="badge ${q.blocking?'blocking':'nonblocking'}">${q.blocking?'blocking':'non-blocking'}</span><div class="answer"><b>__UI_ANSWER__</b><p>${esc(q.answer)}</p></div></div>`).join('') || '<p class="muted">__UI_NO_HISTORY__</p>';
   const itemGuidance=x.human_guidance||[];
-  guidance.innerHTML=itemGuidance.map(g=>`<div class="question"><strong>${esc(g.id)} · ${esc(g.title||g.type)}</strong><span class="badge">${esc(g.type)}</span><p>${esc(g.content||'')}</p>${g.attachment?.filename?`<div class="muted">__UI_ATTACHMENT__: ${esc(g.attachment.filename)}</div>`:''}</div>`).join('') || '<p class="muted">__UI_NO_GUIDANCE__</p>';
+  guidance.innerHTML=itemGuidance.map(g=>`<div class="question"><strong>${esc(g.id||'')} · ${esc(g.title||g.type)}</strong><span class="badge">${esc(g.type)}</span><p>${esc(g.content||'')}</p>${g.attachment?.filename?`<div class="muted">__UI_ATTACHMENT__: ${esc(g.attachment.filename)}</div>`:''}</div>`).join('') || '<p class="muted">__UI_NO_GUIDANCE__</p>';
   metadata.innerHTML=`<dt>__UI_STATE__</dt><dd>${esc(x.approval?.label||'Unknown')}</dd><dt>__UI_REGISTRY__</dt><dd>${esc(x.status)}</dd><dt>__UI_AUTHORITY__</dt><dd>${esc(x.authority)}</dd><dt>__UI_UNIT__</dt><dd>${esc(x.unit)}</dd><details class="technical-details"><summary>Technical details</summary><dt>__UI_PATH__</dt><dd><code>${esc(x.path)}</code></dd></details>`;
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.id===id));
   const selectedButton=document.querySelector(`.nav-item[data-id="${CSS.escape(id)}"]`);
