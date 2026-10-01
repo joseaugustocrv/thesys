@@ -20,7 +20,9 @@
     "Release": "Liberação",
     "Operation & Observability — [Unit key]": "Operação e Observabilidade — [Unit key]",
     "Evolution & Maintenance — [Unit key]": "Evolução e Manutenção — [Unit key]",
-    "Retirement — [Unit key]": "Descontinuação — [Unit key]"
+    "Retirement — [Unit key]": "Descontinuação — [Unit key]",
+    "Governance": "Governança",
+    "Engineering Units": "Unidades de Engenharia"
   },
   "headings": {
     "Intent": "Intenção",
@@ -176,6 +178,14 @@
     "BUS-001 — Business rule": "BUS-001 — Regra de negócio",
     "CLR-001 — Decision record": "CLR-001 — Registro de decisão",
     "FIND-001 — Finding": "FIND-001 — Constatação",
-    "TST-001 — Verification test": "TST-001 — Teste de verificação"
+    "TST-001 — Verification test": "TST-001 — Teste de verificação",
+    "Engineering Units — [Project]": "Unidades de Engenharia — [Projeto]",
+    "Decomposition decision": "Decisão de decomposição",
+    "Complexity boundary": "Limite de complexidade",
+    "Governance": "Governança",
+    "Project": "Projeto",
+    "Methodology": "Metodologia",
+    "Decision boundary": "Limite de decisão",
+    "Human decision": "Decisão humana"
   }
 }

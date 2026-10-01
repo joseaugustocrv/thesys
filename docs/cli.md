@@ -51,37 +51,41 @@ Discovery approval establishes the authoritative Intent and the initial Engineer
 
 ### Engineering Units
 
-Once the project-level discovery/governance baseline is current, `thesys next` automatically asks the configured AI provider to propose Engineering Units. The proposal is non-authoritative and must be explicitly accepted:
+Engineering Units are a first-class lifecycle stage under **Discovery & Foundation**. After Governance is approved, `thesys next` proposes the Unit structure using the configured AI provider. The proposal is non-authoritative and must be explicitly accepted:
 
 ```powershell
 thesys next
-thesys unit proposal accept
+thesys proposal show engineering-units
+thesys proposal accept engineering-units
 ```
 
-The normal workflow therefore does not require the user to remember `unit propose`. The explicit `unit propose` command remains available for advanced/manual workflows.
+`thesys unit propose` and `thesys unit proposal accept` remain compatibility-oriented convenience commands over the same lifecycle stage. They do not create a second workflow.
 
-Engineering Units control complexity. A small project may remain on the default system unit; when child Units are introduced, unit-scoped lifecycle work moves to those Units and the default becomes the project/system container.
+Engineering Units control complexity. A small project uses the Project root as its single work target; when child Units are introduced, unit-scoped lifecycle work moves to those Units while the Project remains the root entity.
 
 ### Engineering stages
 
-After the structural setup, the methodology's dependency graph drives progression automatically. For unit-scoped phases, `next` plans the phase as a batch: it generates proposals for all applicable Engineering Units, keeps each proposal independently persisted, and blocks phase approval until all blocking clarifications are resolved:
+After Engineering Units is approved, the methodology's dependency graph drives
+progression. Unit-scoped stages are planned as a batch, but each Unit retains
+its own proposal, questions, approval and traceability. The stage itself remains
+the gate; a phase is only a grouping/navigation concept.
 
 ```text
-Context → Governance → Engineering Units → Requirements → Clarification → Specification
-→ Acceptance → Unit Architecture → System Architecture Integration
-→ Quality → Security → Risk → Plan → Tasks → Implementation → Verification → Convergence → Release
-→ Operation → Evolution → Retirement
+Discovery & Foundation
+  Intent → Governance → Engineering Units
+Definition
+  Context → Requirements → Clarification → Specification → Acceptance
+Design
+  Architecture → System Architecture
+Engineering Assurance
+  Quality → Security → Risk
+Delivery
+  Plan → Tasks → Implementation
+Verification
+  Verification → Convergence
+Release & Operation
+  Release → Operation → Evolution → Retirement
 ```
-
-For ordinary document stages, the equivalent explicit commands remain:
-
-```powershell
-thesys generate requirements
-thesys proposal show requirements
-thesys proposal accept requirements
-```
-
-`thesys next` is the recommended path; the explicit commands are retained as lower-level controls. Human approval remains required before progression, and an authoritative upstream change invalidates dependent artifacts.
 
 ### Continuous documentation
 
@@ -122,3 +126,30 @@ thesys change impact CHG-001
 ```
 
 Changing an authoritative artifact invalidates dependent artifacts. They must be re-proposed from the new source of truth.
+
+### Presentation-safe documentation
+
+For an investor, executive or other external audience, Thesys can generate a
+business-safe lifecycle overview that contains methodology state and stage
+progress but omits project artifact content, questions, identifiers, paths and
+other technical/project data:
+
+```powershell
+thesys docs build --presentation
+```
+
+The normal `thesys docs build` remains the detailed engineering projection for
+internal use.
+
+## Human guidance
+
+When a proposal needs a different direction, the human can add optional guidance instead of relying on an implicit rejection. Guidance is durable, non-authoritative and becomes part of proposal generation inputs. Adding guidance to a stage invalidates the affected proposal and propagates revalidation to downstream stages.
+
+```powershell
+thesys guidance add requirements directive "Use only BRL in the MVP." --unit financial-records
+thesys guidance add requirements review-note "Do not introduce audit history in the MVP." --unit financial-records
+thesys guidance add requirements reference "Use this reference." --file .\reference.md --unit financial-records
+thesys guidance list
+```
+
+The project documentation shows applicable guidance in the same right-hand engineering history area as questions and clarification history. Public/presentation documentation does not expose project-specific guidance or internal AI generation context.

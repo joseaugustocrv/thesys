@@ -10,7 +10,7 @@ The runtime enforces this rule rather than relying on team convention.
 
 ## End-to-end flow
 
-The v0.1.0 delivery flow is:
+The 0.6.0 delivery flow is:
 
 ```text
 Human Intent Input
@@ -25,9 +25,11 @@ AI Discovery Proposal
        ↓
 Human Approval
        ↓
-Authoritative Intent + Context
+Authoritative Intent
        ↓
 Governance
+       ↓
+Engineering Units (formal lifecycle stage)
        ↓
 Requirements
        ↓
@@ -62,7 +64,7 @@ Operation → Evolution → Retirement
 
 For each document stage, the AI produces a non-authoritative proposal, questions are resolved as needed, and the responsible human explicitly accepts the proposal before it becomes authoritative. Implementation is controlled separately: the AI proposes changes and the runtime applies an accepted implementation proposal. Verification executes the configured verification command and records evidence.
 
-Engineering Units control complexity rather than representing arbitrary technical fragments. A small project may use the default system unit directly. When child Units exist, unit-scoped lifecycle work is performed independently for the relevant Units. After their local Architecture stages, the lifecycle returns to the project through System Architecture Integration, which synthesizes the approved Unit architectures into a system-level view without replacing them.
+Engineering Units control complexity through an explicit, approved lifecycle stage rather than representing arbitrary technical fragments. A small project uses the Project root as its single work target. When child Units exist, unit-scoped lifecycle work is performed independently for the relevant Units. After their local Architecture stages, the lifecycle returns to the project through System Architecture Integration, which synthesizes the approved Unit architectures into a system-level view without replacing them.
 
 ## Human responsibilities
 
@@ -70,7 +72,7 @@ The human:
 
 - starts the work with the initial Intent;
 - answers questions raised by the AI;
-- accepts or rejects AI proposals;
+- reviews AI proposals and may accept them or add human guidance that causes the affected proposal and downstream work to be regenerated;
 - makes business, architecture, risk and release decisions;
 - accepts exceptions and residual risk;
 - remains accountable for the resulting system.
@@ -90,7 +92,7 @@ The AI:
 - identifies inconsistencies and convergence gaps;
 - proposes changes when new information affects the engineering baseline.
 
-AI output remains non-authoritative until explicitly accepted.
+AI output remains non-authoritative until explicitly accepted. Human guidance is also non-authoritative: it changes the inputs to proposal generation and propagates forward through the affected lifecycle scope.
 
 ## Lifecycle
 
@@ -98,7 +100,7 @@ The lifecycle is recursive and can be applied to a system, domain, module, servi
 
 The standard delivery path is:
 
-`Intent → Context → Governance → Requirements → Clarification → Specification → Acceptance → Unit Architecture → System Architecture Integration → Quality → Security → Risk → Plan → Tasks → Implementation → Verification → Convergence → Release`
+`Intent → Governance → Engineering Units → Context → Requirements → Clarification → Specification → Acceptance → Unit Architecture → System Architecture Integration → Quality → Security → Risk → Plan → Tasks → Implementation → Verification → Convergence → Release`
 
 After Release, the lifecycle continues through Operation, Evolution and Retirement.
 

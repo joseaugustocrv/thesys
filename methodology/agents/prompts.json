@@ -102,6 +102,11 @@
     ],
     "retirement": [
       "Define retirement reason, replacement/migration, dependency removal, data retention/disposal, access revocation, shutdown and evidence/approval requirements."
+    ],
+    "engineering-units": [
+      "Decide whether the approved Intent and Governance justify decomposition into Engineering Units. Keep the number of Units small and coherent.",
+      "Engineering Units are organizational scopes for lifecycle work. They do not automatically define runtime components, APIs, deployment boundaries or architecture boundaries.",
+      "Return only the structured decomposition fields requested by the runtime. Do not invent requirements, technologies or architecture decisions."
     ]
   },
   "implementation_adapter": {

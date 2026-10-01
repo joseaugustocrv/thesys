@@ -4,20 +4,23 @@ from .errors import ProjectError
 from .io import read_text, write_text
 from .registry import add_event, register_artifact, allocate_id
 from .questions import allocate_question_id, validate_question_id
+from .guidance import guidance_inputs, guidance_fingerprint
 
 def sha(s): return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
 
-def stage_unit(m, stage, unit):
-    return "default" if stage.config.get("scope") == "project" else unit
+def _project_scope_id(project):
+    from .project import project_key
+    return project_key(project)
+
+
+def stage_unit(project, m, stage, unit):
+    return _project_scope_id(project) if stage.config.get("scope") == "project" else unit
 
 
 def proposal_path(project, stage_id, unit, methodology=None):
-    # Engineering Unit decomposition is a project-level proposal, but it is not
-    # a lifecycle stage. Keep its storage contract outside methodology.stage().
-    if stage_id == "engineering-units":
-        return project / ".thesys" / "proposals" / "engineering-units" / "proposal.json"
-    stage_unit = "default" if methodology is None or methodology.stage(stage_id).config.get("scope") == "project" else unit
+    stage = methodology.stage(stage_id) if methodology is not None else None
+    stage_unit = _project_scope_id(project) if stage is None or stage.config.get("scope") == "project" else unit
     return project / ".thesys" / "proposals" / stage_unit / f"{stage_id}.json"
 
 
@@ -93,8 +96,26 @@ def load_proposal(project, stage_id, unit, methodology=None):
 
 
 
+
+def proposal_inputs(project, m, stage, unit):
+    """Return the complete current input snapshot for a proposal."""
+    return {
+        "authoritative": authoritative_inputs(project, m, stage, unit),
+        "guidance": guidance_inputs(project, m, stage, unit),
+    }
+
+
+def _normalize_proposal_inputs(project, m, stage, unit, inputs):
+    if m is None:
+        return inputs or {}
+    if isinstance(inputs, dict) and "authoritative" in inputs and "guidance" in inputs:
+        return inputs
+    # Preserve compatibility for internal callers/tests that supply only the
+    # authoritative-input map; guidance is still captured at persistence time.
+    return {"authoritative": inputs or {}, "guidance": guidance_inputs(project, m, stage, unit)}
+
 def save_proposal(project, stage_id, unit, provider, content, questions, inputs, methodology=None, metadata=None):
-    stage_unit = "default" if methodology is None or methodology.stage(stage_id).config.get("scope") == "project" else unit
+    stage_unit = _project_scope_id(project) if methodology is None or methodology.stage(stage_id).config.get("scope") == "project" else unit
     path = proposal_path(project, stage_id, unit, methodology)
     old = {}
     if path.is_file():
@@ -143,6 +164,8 @@ def save_proposal(project, stage_id, unit, provider, content, questions, inputs,
         reserved_ids.add(question_id)
         normalized.append({"id": question_id, **question})
 
+    stage_definition = methodology.stage(stage_id) if methodology is not None else None
+    inputs = _normalize_proposal_inputs(project, methodology, stage_definition, stage_unit, inputs)
     fp = sha(json.dumps(inputs, ensure_ascii=False, sort_keys=True))
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -175,16 +198,21 @@ def proposal_questions(project, proposal):
 
 
 def proposal_is_stale(project, m, stage_id, unit, proposal):
-    """Return whether a persisted proposal no longer matches its authoritative inputs."""
+    """Return whether a persisted proposal no longer matches its current inputs."""
     if stage_id == "intent" and m.stage(stage_id).action == "discovery":
         from .intents import read_intent_input
+        from .guidance import guidance_inputs
         inputs = {
-            "intent_input": read_intent_input(project),
-            "answers": _load_answers(project),
-            "project_template": (project / ".thesys/project.yaml").read_text(encoding="utf-8"),
+            "authoritative": {
+                "intent_input": read_intent_input(project),
+                "answers": _load_answers(project),
+                "project_template": (project / ".thesys/project.yaml").read_text(encoding="utf-8"),
+            },
+            "guidance": guidance_inputs(project, m, m.stage(stage_id), _project_scope_id(project)),
         }
     else:
-        inputs = authoritative_inputs(project, m, m.stage(stage_id), unit)
+        stage = m.stage(stage_id)
+        inputs = proposal_inputs(project, m, stage, unit)
     return proposal.get("input_fingerprint") != sha(json.dumps(inputs, ensure_ascii=False, sort_keys=True))
 
 
@@ -198,12 +226,12 @@ def _dependency_targets(project, m, stage, unit, dep):
     if stage.config.get("aggregate_units") and dep_stage.config.get("scope") != "project":
         return [(dep, key) for key in _work_unit_keys(project)]
     if stage.config.get("scope") == "project" or dep_stage.config.get("scope") == "project":
-        return [(dep, "default")]
+        return [(dep, _project_scope_id(project))]
     return [(dep, unit)]
 
 
 def _artifact_path(m, project, stage, unit):
-    return m.artifact_path(project, stage, stage_unit(m, stage, unit))
+    return m.artifact_path(project, stage, stage_unit(project, m, stage, unit))
 
 
 def authoritative_inputs(project, m, stage, unit):
@@ -220,14 +248,15 @@ def authoritative_inputs(project, m, stage, unit):
 
 def can_propose(project, m, stage, unit):
     from .gates import status
-    from .project import has_child_units, unit_info
-    if stage.config.get("scope") != "project" and unit == "default" and has_child_units(project):
-        raise ProjectError("The default system unit is a container once child Engineering Units exist. Run this stage for a specific Engineering Unit.")
+    from .project import has_child_units, scope_info, project_key
     if stage.config.get("scope") != "project":
-        try:
-            unit_info(project, unit)
-        except ProjectError:
-            raise ProjectError(f"Engineering unit not found: {unit}")
+        if not has_child_units(project) and unit == project_key(project):
+            pass
+        else:
+            try:
+                scope_info(project, unit)
+            except ProjectError:
+                raise ProjectError(f"Engineering unit not found: {unit}")
     st = status(project, m, unit)
     if stage.config.get("aggregate_units"):
         from .gates import _stage_current, _dependency_targets
@@ -238,12 +267,21 @@ def can_propose(project, m, stage, unit):
     if missing: raise ProjectError(f"Stage '{stage.id}' cannot be proposed before: {', '.join(missing)}")
 
 
-def accept_proposal(project, m, stage_id, unit="default"):
-    # Engineering Unit decomposition is a special project-level proposal, not
-    # a lifecycle stage. Dispatch before consulting methodology.stage().
-    if stage_id == "engineering-units":
+def accept_proposal(project, m, stage_id, unit=None):
+    unit = unit or _project_scope_id(project)
+    stage = m.stage(stage_id)
+    # Stage-specific execution is selected by lifecycle action, not by a hidden
+    # stage ID branch. This keeps the lifecycle definition authoritative.
+    if stage.action == "units":
         from .unit_proposals import accept_unit_proposal
-        return accept_unit_proposal(project, m)
+        artifact = accept_unit_proposal(project, m)
+        from .gates import approve
+        prop = load_proposal(project, stage_id, unit, m)
+        approve(project, m, stage_id, unit, proposal_id=prop["proposal_id"] if "proposal_id" in prop else None)
+        prop["status"] = "accepted"
+        prop["accepted_at"] = datetime.now(timezone.utc).isoformat()
+        write_text(proposal_path(project, stage_id, unit, m), json.dumps(prop, ensure_ascii=False, indent=2) + "\n")
+        return artifact
     # Discovery is a project-level composite proposal: its authoritative input
     # fingerprint includes the human Intent input, answered questions and the
     # project template, and its acceptance materializes both Intent and Context.
@@ -252,12 +290,11 @@ def accept_proposal(project, m, stage_id, unit="default"):
     if stage_id == "intent" and m.stage(stage_id).action == "discovery":
         from .intents import accept_discovery
         return accept_discovery(project, m)[0]
-    stage = m.stage(stage_id)
     p = load_proposal(project, stage_id, unit, m)
     if p.get("stage") != stage_id: raise ProjectError("Proposal stage mismatch.")
     if p.get('status') not in {'proposed'}: raise ProjectError('Proposal is not current; regenerate it before approval.')
     if proposal_questions(project, p): raise ProjectError("Proposal has unanswered blocking questions. Answer them and regenerate the proposal before approval.")
-    inputs = authoritative_inputs(project, m, stage, unit)
+    inputs = proposal_inputs(project, m, stage, unit)
     if p.get("input_fingerprint") != sha(json.dumps(inputs, ensure_ascii=False, sort_keys=True)):
         raise ProjectError("Proposal is stale because authoritative upstream context changed. Regenerate the proposal.")
     if not p.get("content", "").strip(): raise ProjectError("Proposal has no content.")
@@ -273,5 +310,6 @@ def accept_proposal(project, m, stage_id, unit="default"):
     return target
 
 
-def show_proposal(project, stage_id, unit="default", methodology=None):
+def show_proposal(project, stage_id, unit=None, methodology=None):
+    unit = unit or _project_scope_id(project)
     return load_proposal(project, stage_id, unit, methodology)

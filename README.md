@@ -11,12 +11,31 @@ It can operate inside Agile, Scrum, Kanban, DevOps or other delivery models.
 
 ## Engineering lifecycle
 
+Thesys separates **lifecycle phases** from **lifecycle stages**. Phases organize
+the journey; every stage is an executable gate with its own dependencies,
+scope, proposal and human approval.
+
 ```text
-Intent Input → AI Discovery → Human Answers → AI Proposal → Human Approval
-→ Authoritative Intent + Context → Governance → Requirements → Clarification
-→ Specification → Acceptance → Unit Architecture → System Architecture Integration → Quality/Security/Risk
-→ Plan → Tasks → Implementation → Verification → Convergence → Release
-→ Operation → Evolution → Retirement
+DISCOVERY & FOUNDATION
+  Intent → Governance → Engineering Units
+
+DEFINITION
+  Context → Requirements → Clarification → Specification → Acceptance
+
+DESIGN
+  Architecture → System Architecture
+
+ENGINEERING ASSURANCE
+  Quality → Security → Risk
+
+DELIVERY
+  Plan → Tasks → Implementation
+
+VERIFICATION
+  Verification → Convergence
+
+RELEASE & OPERATION
+  Release → Operation → Evolution → Retirement
 ```
 
 The lifecycle is recursive rather than strictly linear. Specialized workflows
@@ -111,11 +130,15 @@ workspace. With multiple projects, select one explicitly with
 `thesys project use <key>`. For an existing repository,
 `thesys init --path .` remains available.
 
-Create a unit:
+Engineering Units are introduced through the lifecycle rather than by a hidden or separate decomposition workflow:
 
 ```powershell
-thesys unit create billing "Billing" --type module --scope payments --path .
+thesys next
+thesys proposal show engineering-units
+thesys proposal accept engineering-units
 ```
+
+The low-level `thesys unit create` command remains available for controlled maintenance and migration scenarios; it does not bypass the Engineering Units lifecycle gate.
 
 Inspect traceability or record evidence:
 

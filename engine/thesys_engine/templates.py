@@ -22,7 +22,7 @@ def template_schema(methodology, stage_id):
     return contract_schema(load_contract(methodology, stage_id))
 
 
-def render_template(methodology, stage_id, sections, language, unit_key="default"):
+def render_template(methodology, stage_id, sections, language, unit_key="project"):
     contract = load_contract(methodology, stage_id)
     localization = load_localization(methodology, language)
     return render_sections(contract, sections, localization, unit_key)

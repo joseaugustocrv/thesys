@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.6.0 — Human guidance and propagated revalidation
+
+- Added optional, durable Human Guidance as a first-class engineering input.
+- Added CLI support for directives, review notes, references and UTF-8 text attachments.
+- Guidance is included in proposal fingerprints and propagates forward through the affected lifecycle scope.
+- Added automatic invalidation of non-authoritative proposals after guidance is added.
+- Added revalidation/regeneration of approved downstream stages when guidance changes upstream context.
+- Extended project documentation with Human Guidance history and lifecycle state indicators.
+- Added status dots and explicit collapse affordances to lifecycle phase groups.
+- Updated public documentation without exposing agent prompts, internal generation context or project-specific proposal data.
+
+## 0.5.1 — Project as the lifecycle root
+
+### Changed
+
+- Made the Project entity the canonical root of the lifecycle and engineering hierarchy.
+- Removed the synthetic `default` Engineering Unit from new projects.
+- Project-scoped proposals, approvals and registry records now use the actual Project key.
+- A project without Engineering Units uses the Project root as its single unit-scoped work target without materializing a fake Engineering Unit.
+- Top-level Engineering Units now explicitly parent to the Project root.
+
+### Fixed
+
+- Updated lifecycle gates, dependency resolution, orchestration, implementation, documentation and CLI handling to use the same Project-root model.
+- Added conservative migration of 0.5.0 `default` root state into the Project-root model.
+- Preserved compatibility with legacy Engineering Unit proposals that used `default`/`project` as the root parent token.
+
+### Validation
+
+- Full automated test suite: 77 tests passed.
+
+## 0.5.0 — hierarchical lifecycle and structured orchestration
+
+### Added
+
+- Introduced hierarchical lifecycle phases with stages as the only workflow gates.
+- Promoted Engineering Units to a first-class, human-approved lifecycle stage.
+- Added the authoritative Engineering Unit Map artifact and canonical lifecycle proposal storage.
+- Added presentation-safe generated documentation that exposes lifecycle progress without project artifact content.
+
+### Changed
+
+- Reworked orchestration to follow the methodology dependency graph without hidden Engineering Unit transitions or phase-level approval semantics.
+- Extended the methodology contract with explicit phase metadata, stage scope, action and dependencies.
+- Kept project/unit as the only lifecycle scopes; project-level aggregation remains an explicit stage capability.
+- Strengthened agent lifecycle context with phase and stage information while keeping prompts methodology-owned and provider adapters generic.
+- Improved generated HTML navigation to reflect the same runtime lifecycle status used by the CLI.
+
+### Fixed
+
+- Fixed lifecycle documentation status projection so an approved stage cannot appear as partially approved because the HTML inferred a different Unit set.
+- Fixed clarification-history projection so durable answered decisions remain attached to authoritative artifacts after regeneration and acceptance.
+- Preserved compatibility with accepted 0.4.0 Engineering Unit proposals during migration.
+
+### Validation
+
+- Full automated test suite and deterministic end-to-end lifecycle verification must pass before the 0.5.0 tag is created.
+
 ## Unreleased
 
 ### Changed

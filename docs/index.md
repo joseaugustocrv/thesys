@@ -16,68 +16,56 @@ Thesys addresses that problem by making engineering intent, authority, relations
 
 ## The engineering lifecycle
 
-The functional v0.1.0 lifecycle is:
+The current Thesys lifecycle is hierarchical. Phases provide navigation and
+coherence; stages are the actual workflow gates. Every stage has explicit
+dependencies, scope, artifact/execution contract and human approval.
 
 ```text
-Intent & Discovery
-  ↓
-Engineering Context
-  ↓
-Governance & Constitution
-  ↓
-Requirements
-  ↓
-Clarification
-  ↓
-Specification
-  ↓
-Acceptance Criteria
-  ↓
-Architecture & Design
-  ↓
-Quality Engineering
-  ↓
-Security Engineering
-  ↓
-Risk & Exception Analysis
-  ↓
-Implementation Plan
-  ↓
-Tasks
-  ↓
-Implementation
-  ↓
-Verification
-  ↓
-Convergence
-  ↓
-Release
-  ↓
-Operation & Observability
-  ↓
-Evolution & Maintenance
-  ↓
-Retirement
+DISCOVERY & FOUNDATION
+├── Intent
+├── Governance
+└── Engineering Units
+
+DEFINITION
+├── Context
+├── Requirements
+├── Clarification
+├── Specification
+└── Acceptance Criteria
+
+DESIGN
+├── Architecture & Design
+└── System Architecture Integration
+
+ENGINEERING ASSURANCE
+├── Quality Engineering
+├── Security Engineering
+└── Risk & Exception Analysis
+
+DELIVERY
+├── Implementation Plan
+├── Tasks
+└── Implementation
+
+VERIFICATION
+├── Verification
+└── Convergence
+
+RELEASE & OPERATION
+├── Release
+├── Operation & Observability
+├── Evolution & Maintenance
+└── Retirement
 ```
 
-Each stage produces or advances an explicit engineering artifact or controlled execution state. Human approval is required before progression, and authoritative changes can invalidate dependent work.
+Engineering Units is a formal stage rather than a hidden orchestration step.
+Its approved result defines the project scopes used by subsequent unit-scoped
+stages. A small project can use the Project root as its single work target; a larger project can
+use child Units without introducing a third lifecycle scope.
 
-The lifecycle is not a rigid waterfall. Engineering work can iterate, branch, recurse into smaller units, or return to an earlier source of intent when new information changes the expected result.
-
-<div class="thesys-grid">
-  <div class="thesys-card">
-    <strong>Explicit intent</strong>
-    <span>The desired outcome is stated before implementation.</span>
-  </div>
-  <div class="thesys-card">
-    <strong>Controlled change</strong>
-    <span>Changes propagate from authoritative sources to affected work.</span>
-  </div>
-  <div class="thesys-card">
-    <strong>Verifiable evidence</strong>
-    <span>Completion is supported by observable engineering evidence.</span>
-  </div>
-</div>
+The lifecycle is not a rigid waterfall. Engineering work can iterate, recurse
+into smaller Units, or return to an earlier authoritative source when new
+information changes the expected result.
 
 ## What Thesys emphasizes
 

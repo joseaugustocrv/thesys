@@ -15,7 +15,7 @@ An executable methodology may describe:
 - generic action types;
 - applicable templates.
 
-The important architectural principle is that the runtime interprets these definitions rather than embedding a project-specific lifecycle sequence in its implementation.
+The important architectural principle is that the runtime interprets these definitions rather than embedding a project-specific lifecycle sequence in its implementation. The definition is hierarchical: phases organize stages, while stages remain the only workflow gates.
 
 ## Public methodology versus internal implementation
 

@@ -25,7 +25,7 @@ def test_pt_br_rendering_owns_document_structure():
     assert '## Intent' not in rendered
     req_contract = template_contract(m, 'requirements')
     req_sections = {section.id: 'conteúdo' for section in req_contract.sections}
-    req_rendered = render_template(m, 'requirements', req_sections, 'pt-BR', 'default')
+    req_rendered = render_template(m, 'requirements', req_sections, 'pt-BR', 'test-project')
     assert 'REQ-001 — Requisito funcional' in req_rendered
     assert '[Título do requisito]' not in req_rendered
 
@@ -47,7 +47,7 @@ def test_engineering_templates_do_not_embed_questions():
         contract = template_contract(m, stage_id)
         headings = {section.heading.casefold() for section in contract.sections}
         assert not ({"open questions", "questions", "questões em aberto"} & headings), stage_id
-        rendered = render_template(m, stage_id, {section.id: "conteúdo" for section in contract.sections}, "pt-BR", "default")
+        rendered = render_template(m, stage_id, {section.id: "conteúdo" for section in contract.sections}, "pt-BR", "test-project")
         assert "QST-001" not in rendered, stage_id
 
 def test_generated_content_rejects_question_sections_ids_and_placeholders():

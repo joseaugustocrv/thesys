@@ -26,3 +26,16 @@ Every material change should be explainable through the chain:
 ```text
 Change → Question → Decision → Updated artifact → Impact → Revalidation
 ```
+
+
+## Human guidance
+
+Human guidance is an optional, durable engineering input used to orient AI proposals. It may be added at any lifecycle stage and may contain a directive, review note, reference or supported text attachment. Guidance is non-authoritative and never silently overrides an approved artifact or decision.
+
+Guidance propagates forward from its lifecycle stage: adding guidance to a stage invalidates the current proposal or approved baseline at that stage and all downstream stages in the affected scope. Historical artifacts remain preserved; affected stages are marked for regeneration or revalidation.
+
+The traceability chain for guidance is:
+
+```text
+Human Guidance → Input Fingerprint Change → Regeneration / Revalidation → Human Approval
+```

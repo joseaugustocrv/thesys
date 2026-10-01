@@ -30,6 +30,8 @@ def test_registry_uses_methodology_artifact_prefixes(tmp_path):
     assert cli(tmp_path, 'discovery', 'accept') == 0
     assert cli(tmp_path, 'generate', 'governance', '--agent', 'mock') == 0
     assert cli(tmp_path, 'proposal', 'accept', 'governance') == 0
+    main(['generate','engineering-units','--agent','mock','--path',str(tmp_path)])
+    main(['proposal','accept','engineering-units','--path',str(tmp_path)])
     assert cli(tmp_path, 'generate', 'context', '--agent', 'mock') == 0
     assert cli(tmp_path, 'proposal', 'accept', 'context') == 0
     for stage in ['requirements', 'clarification', 'specification', 'acceptance', 'architecture']:
@@ -60,6 +62,8 @@ def test_approval_materializes_dependency_relations_and_project_event_subject(tm
     main(['discovery','accept','--path',str(tmp_path)])
     main(['generate','governance','--agent','mock','--path',str(tmp_path)])
     main(['proposal','accept','governance','--path',str(tmp_path)])
+    main(['generate','engineering-units','--agent','mock','--path',str(tmp_path)])
+    main(['proposal','accept','engineering-units','--path',str(tmp_path)])
     registry=get(tmp_path)
     ids=registry['artifacts']
     assert any(r['source']==ids['GOV-001']['id'] and r['target']==ids['INT-001']['id'] and r['relation']=='depends-on' for r in registry['relations'])
