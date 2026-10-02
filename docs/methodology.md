@@ -10,7 +10,7 @@ The runtime enforces this rule rather than relying on team convention.
 
 ## End-to-end flow
 
-The 0.6.0 delivery flow is:
+The 0.5.0 delivery flow is:
 
 ```text
 Human Intent Input

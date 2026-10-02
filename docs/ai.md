@@ -52,6 +52,6 @@ but remain in clarification history.
 
 ## Human guidance
 
-Thesys 0.6.0 adds an optional Human Guidance layer between authoritative engineering context and AI proposals. Guidance can be a directive, review note, reference or supported text attachment.
+Thesys 0.5.0 adds an optional Human Guidance layer between authoritative engineering context and AI proposals. Guidance can be a directive, review note, reference or supported text attachment.
 
 Guidance is durable and non-authoritative. It becomes part of the inputs used to generate proposals and propagates forward through the affected lifecycle scope. If guidance changes an approved stage's context, that stage and downstream stages require regeneration or revalidation while the historical approved artifacts remain preserved.
