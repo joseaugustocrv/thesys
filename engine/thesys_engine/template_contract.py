@@ -87,7 +87,7 @@ def _render_title(title: str, localization: dict, unit_key: str) -> str:
     return localized.replace("[Unit key]", unit_key)
 
 
-def render_sections(contract: TemplateContract, sections: dict, localization: dict, unit_key: str = "default") -> str:
+def render_sections(contract: TemplateContract, sections: dict, localization: dict, unit_key: str = "project") -> str:
     labels = section_labels(contract, localization)
     lines = [f"# {_render_title(contract.title, localization, unit_key)}", ""]
     for section in contract.sections:

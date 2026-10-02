@@ -34,7 +34,7 @@ def test_openai_stage_contract_returns_questions():
     payload={'sections': {k:'Proposed content. ' * 20 for k in __import__('thesys_engine.templates',fromlist=['template_contract']).template_contract(m,'requirements').section_ids},'questions':[{'question':'What is the retention target?','why':'It affects architecture.','blocking':True}]}
     client=FakeClient(payload); agent=OpenAIAgent(client); m=load_methodology(ROOT)
     from thesys_engine.agents import GenerationContext
-    result=agent.propose_document(m,'requirements',GenerationContext('intent','default','scope','pt-BR',{},{}))
+    result=agent.propose_document(m,'requirements',GenerationContext('intent','test-project','scope','pt-BR',{},{}))
     assert result['questions'][0]['blocking'] is True
     call=client.responses.calls[0]
     assert 'Project language: pt-BR' in call['instructions']
@@ -52,7 +52,7 @@ def test_openai_unit_contract_canonicalizes_localized_type():
             "scope": "Operações de vendas",
             "rationale": "Domínio explicitamente definido no Intent.",
             "type": "domínio",
-            "parent": "default",
+            "parent": "test-project",
             "dependencies": [],
         }],
     }
@@ -116,7 +116,7 @@ def test_stage_prompt_exposes_complete_lifecycle_for_question_classification():
     client = FakeClient(payload)
     agent = OpenAIAgent(client)
     from thesys_engine.agents import GenerationContext
-    agent.propose_document(m, 'clarification', GenerationContext('intent', 'default', 'scope', 'pt-BR', {}, {}))
+    agent.propose_document(m, 'clarification', GenerationContext('intent', 'test-project', 'scope', 'pt-BR', {}, {}))
     call = client.responses.calls[0]
     instructions = call['instructions']
     assert 'apply the question-blocking policy defined by the methodology' in instructions
@@ -140,8 +140,8 @@ def test_model_blocking_decision_is_preserved_without_semantic_runtime_override(
         {'question': 'Quais são os campos definitivos da operação?', 'why': 'A decisão ainda pode ser necessária nesta fase.', 'blocking': True},
         {'question': 'Quais são os campos definitivos da operação?', 'why': 'O detalhamento pode ser resolvido na Specification.', 'blocking': False},
     ]
-    save_proposal(tmp_path, 'clarification', 'default', 'mock', 'clarification', questions, {'source': 'test'}, m)
-    proposal = __import__('json').loads((tmp_path / '.thesys/proposals/default/clarification.json').read_text(encoding='utf-8-sig'))
+    save_proposal(tmp_path, 'clarification', tmp_path.name, 'mock', 'clarification', questions, {'source': 'test'}, m)
+    proposal = __import__('json').loads((tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'clarification.json').read_text(encoding='utf-8-sig'))
     assert [q['blocking'] for q in proposal['questions']] == [True, False]
 
 
@@ -160,8 +160,8 @@ def test_stage_prompt_receives_clarification_history(tmp_path):
         def __init__(self): self.responses=FakeResponses()
 
     agent=OpenAIAgent(client=FakeClient())
-    history=[{"id":"QST-021","question":"Qual estilo arquitetural?","why":"Necessário para aprovação.","blocking":True,"answer":"SUA RESPOSTA","stage":"architecture","unit":"default"}]
-    agent.propose_document(m,"architecture",GenerationContext("intent","default","scope","pt-BR",{}, {}, {}, "system", None, (), history))
+    history=[{"id":"QST-021","question":"Qual estilo arquitetural?","why":"Necessário para aprovação.","blocking":True,"answer":"SUA RESPOSTA","stage":"architecture","unit":"test-project"}]
+    agent.propose_document(m,"architecture",GenerationContext("intent","test-project","scope","pt-BR",{}, {}, {}, "system", None, (), history))
     assert "Clarification history for this stage and unit" in agent.client.responses.kwargs["input"]
     assert "QST-021" in agent.client.responses.kwargs["input"]
 

@@ -1,4 +1,17 @@
 {
-  "titles": {},
-  "headings": {}
+  "titles": {
+    "Governance": "Governance",
+    "Engineering Units": "Engineering Units"
+  },
+  "headings": {
+    "Engineering Units — [Project]": "Engineering Units — [Project]",
+    "Decomposition decision": "Decomposition decision",
+    "Engineering Unit map": "Engineering Unit map",
+    "Complexity boundary": "Complexity boundary",
+    "Governance": "Governance",
+    "Project": "Project",
+    "Methodology": "Methodology",
+    "Decision boundary": "Decision boundary",
+    "Human decision": "Human decision"
+  }
 }

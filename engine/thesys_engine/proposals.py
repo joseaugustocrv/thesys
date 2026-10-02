@@ -3,7 +3,8 @@ from .errors import ProjectError
 from .io import read_text
 from .agents import get_agent,GenerationContext
 from .workflow import can_propose,save_proposal,load_proposal,accept_proposal,proposal_questions,authoritative_inputs,_load_answers,_clarification_history_for,proposal_path
-from .project import unit_info,project_language
+from .guidance import applicable_guidance, guidance_inputs
+from .project import scope_info, project_language, project_key, work_targets
 
 def _artifact_index(project, m, stage, unit):
     """Return exact upstream artifact IDs and paths for agent traceability."""
@@ -13,7 +14,7 @@ def _artifact_index(project, m, stage, unit):
     for dep_id in stage.depends_on:
         for dep_name, dep_unit in _dependency_targets(project, m, stage, unit, dep_id):
             dep_stage = m.stage(dep_name)
-            p = m.artifact_path(project, dep_stage, stage_unit(m, dep_stage, dep_unit))
+            p = m.artifact_path(project, dep_stage, stage_unit(project, m, dep_stage, dep_unit))
             if not p or not p.is_file():
                 continue
             aid = find_artifact_id_by_path(project, p)
@@ -30,18 +31,17 @@ def _context(project,m,unit,stage):
     approved={}
     from .workflow import stage_unit
     from .gates import status
-    aggregate_stage = stage.config.get('aggregate_units') and stage.config.get('scope') == 'project' and unit == 'default'
+    aggregate_stage = stage.config.get('aggregate_units') and stage.config.get('scope') == 'project' and unit == project_key(project)
     if aggregate_stage:
-        project_status=status(project,m,'default')
+        project_status=status(project,m,project_key(project))
         for s in m.stages:
             if s.config.get('scope') == 'project':
-                p=m.artifact_path(project,s,'default')
+                p=m.artifact_path(project,s,project_key(project))
                 if p and p.is_file() and project_status.get(s.id,{}).get('status') in {'approved','completed'}:
                     approved[s.id]=read_text(p)
 
-        from .project import work_units
         related_units={}
-        for item in work_units(project):
+        for item in work_targets(project):
             key=item['key']
             unit_status=status(project,m,key)
             unit_inputs={}
@@ -56,21 +56,21 @@ def _context(project,m,unit,stage):
                     unit_inputs[dep_id]=content
             related_units[key]={
                 "name": item.get("name", key),
-                "parent": item.get("parent", "default"),
+                "parent": item.get("parent") or project_key(project),
                 "dependencies": item.get("dependencies", []),
                 "artifacts": unit_inputs,
             }
             if 'architecture' in unit_inputs:
                 related_units[key]['architecture']=unit_inputs['architecture']
-        scope=unit_info(project,'default')['scope']
-        return GenerationContext(approved.get('intent',''), 'default', scope, project_language(project,m.language), approved, _load_answers(project), related_units, 'system', None, (), _clarification_history_for(project, stage.id, 'default'), _artifact_index(project, m, stage, 'default'))
+        scope=scope_info(project,project_key(project))['scope']
+        return GenerationContext(approved.get('intent',''), project_key(project), scope, project_language(project,m.language), approved, _load_answers(project), related_units, 'system', None, (), _clarification_history_for(project, stage.id, project_key(project)), _artifact_index(project, m, stage, project_key(project)), guidance_inputs(project, m, stage, project_key(project)))
 
     statuses=status(project,m,unit)
     for s in m.stages:
-        su=stage_unit(m,s,unit); p=m.artifact_path(project,s,su)
+        su=stage_unit(project,m,s,unit); p=m.artifact_path(project,s,su)
         if p and p.is_file() and statuses.get(s.id,{}).get('status') in {'approved','completed'}:
             approved[s.id]=read_text(p)
-    info = unit_info(project, unit)
+    info = scope_info(project, unit)
     return GenerationContext(
         approved.get('intent',''),
         unit,
@@ -84,6 +84,7 @@ def _context(project,m,unit,stage):
         tuple(info.get('dependencies', [])),
         _clarification_history_for(project, stage.id, unit),
         _artifact_index(project, m, stage, unit),
+        guidance_inputs(project, m, stage, unit),
     )
 
 def _validate_artifact_refs(project, methodology, content):
@@ -103,7 +104,22 @@ def _validate_artifact_refs(project, methodology, content):
 
 def _context_boundary_section(c):
     pt = c.language.lower().startswith("pt-")
+    is_project = c.unit_type == "project"
     parent = c.unit_parent or ("não aplicável" if pt else "not applicable")
+    if is_project:
+        if pt:
+            return (
+                "- Entidade: o Projeto é a raiz da estrutura de engenharia.\n"
+                "- Unidade pai: não aplicável.\n"
+                "- Tipo de entidade: project.\n"
+                f"- Escopo do Projeto: {c.unit_scope}."
+            )
+        return (
+            "- Entity: the Project is the root of the engineering structure.\n"
+            "- Parent: not applicable.\n"
+            "- Entity type: project.\n"
+            f"- Project scope: {c.unit_scope}."
+        )
     if pt:
         return (
             f"- Sistema: a Unidade pertence ao sistema definido pela Intenção aprovada.\n"
@@ -152,6 +168,9 @@ def _template_placeholders(methodology, stage_id):
 def generate(project, m, stage_id, unit, provider='openai'):
     stage = m.stage(stage_id)
     can_propose(project, m, stage, unit)
+    if stage.action == "units":
+        from .unit_proposals import generate_unit_proposal
+        return generate_unit_proposal(project, provider, m)
     agent = get_agent(provider)
     c = _context(project, m, unit, stage)
     result = agent.propose_document(m, stage_id, c)
@@ -170,15 +189,19 @@ def generate(project, m, stage_id, unit, provider='openai'):
         }
         for q in result.get('questions', [])
     ]
-    if stage_id == 'context' and c.unit != 'default' and c.unit_parent:
+    if stage_id == 'context' and c.unit != project_key(project) and c.unit_parent:
         questions = [
             q for q in questions
             if 'unidade pai' not in q.get('question', '').lower()
             and 'parent unit' not in q.get('question', '').lower()
         ]
+    proposal_inputs = {
+        "authoritative": authoritative_inputs(project, m, stage, unit),
+        "guidance": guidance_inputs(project, m, stage, unit),
+    }
     return save_proposal(
         project, stage_id, unit, agent.name, content,
-        questions, authoritative_inputs(project, m, stage, unit), m,
+        questions, proposal_inputs, m,
     )
 
 def list_proposals(project): return sorted((project/'.thesys/proposals').glob('*/*.json'))

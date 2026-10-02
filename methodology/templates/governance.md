@@ -1,23 +1,23 @@
-# Governance — [Unit key]
+# Governance
 
 ## Purpose
 
-Define the authority, constraints and engineering responsibilities for this unit.
+Define the authority, constraints and engineering responsibilities for this project.
 
 ## Scope and context
 
-- Parent unit:
-- Unit type:
-- Scope:
+- Project:
+- Methodology:
+- Decision boundary:
 
 ## Roles and accountability
 
 | Responsibility | Owner | Authority |
 |---|---|---|
-| Business intent | [Owner] | Decisão humana |
-| Technical decisions | | Decisão humana |
-| Risk acceptance | | Decisão humana |
-| Release decision | | Decisão humana |
+| Business intent | [Owner] | Human decision |
+| Technical decisions | [Owner] | Human decision |
+| Risk acceptance | [Owner] | Human decision |
+| Release decision | [Owner] | Human decision |
 
 ## Constraints and policies
 
@@ -29,5 +29,4 @@ Define the authority, constraints and engineering responsibilities for this unit
 
 ## Exceptions
 
-Record approved exceptions as explicit artifacts. Do not use this section to
-silently waive a mandatory control.
+Record approved exceptions as explicit artifacts. Do not use this section to silently waive a mandatory control.

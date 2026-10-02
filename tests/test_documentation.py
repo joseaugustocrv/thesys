@@ -25,7 +25,10 @@ def test_docs_build_generates_static_navigation(tmp_path):
     assert 'Architecture & Design' in html
     assert 'const LIFECYCLE' in html
     assert 'Supporting artifacts' in html
-    assert 'Not generated' in html
+    assert 'Pending' in html
+    assert 'generated=' not in html
+    assert 'lifecycle stages approved' in html
+    assert 'lifecycle stages completed' not in html
     assert 'data:image/svg+xml;base64,' in html
     assert 'Thesys logo' in html
     assert 'data:image/svg+xml;base64,PHN2Zy' in html
@@ -45,6 +48,18 @@ def test_markdown_tables_render_as_html_tables():
     assert 'style="text-align:right"' in rendered
     assert '| Dependency | Owner | Constraint |' not in rendered
 
+
+
+def test_documentation_uses_runtime_statuses_without_artifact_position_inference(tmp_path):
+    main(['init','--path',str(tmp_path)])
+    main(['intent','create','Build a documentation runtime-state test project.','--path',str(tmp_path)])
+    main(['docs','build','--path',str(tmp_path)])
+    html=(tmp_path/'.thesys/docs/index.html').read_text(encoding='utf-8-sig')
+    assert 'const LIFECYCLE_STATUS' in html
+    assert "case 'blocked': return 'blocked';" in html
+    assert "case 'needs_revalidation':" in html
+    assert "case 'partial': return 'in-progress';" in html
+    assert "return previous ? 'upcoming' : 'not-generated';" not in html
 
 def test_docs_build_structures_evidence_and_searches_content(tmp_path):
     main(['init','--path',str(tmp_path)])
@@ -107,6 +122,8 @@ def test_docs_group_lifecycle_by_phase_and_keep_project_intent_after_units(tmp_p
     manifest=json.loads((tmp_path/'.thesys/docs/manifest.json').read_text(encoding='utf-8-sig'))
     assert 'nav-phase' in html
     assert 'nav-phase-items' in html
+    assert '<small>discovery-foundation</small>' not in html
+    assert 'Discovery & Foundation' in html
     assert any(item['type'] == 'INT' for item in manifest['artifacts'])
     assert any(item['type'] == 'GOV' for item in manifest['artifacts'])
 
@@ -132,6 +149,8 @@ def test_documentation_contains_phase_status_classes(tmp_path):
     assert 'nav-stage' in html
     assert 'function itemState' in html
     assert 'LIFECYCLE_SCOPES' in html
+    assert 'LIFECYCLE_PHASES' in html
+    assert 'LIFECYCLE_STATUS' in html
     assert 'UNIT_KEYS' in html
 
 
@@ -146,7 +165,7 @@ def test_docs_distinguish_architecture_and_system_architecture_with_shared_prefi
     registry={
         'artifacts': {
             'ARC-001': {'id':'ARC-001','type':'ARC','path':str(arch),'unit':'compras','status':'authoritative','authority':'human'},
-            'ARC-002': {'id':'ARC-002','type':'ARC','path':str(sysarch),'unit':'default','status':'authoritative','authority':'human'},
+            'ARC-002': {'id':'ARC-002','type':'ARC','path':str(sysarch),'unit':tmp_path.name,'status':'authoritative','authority':'human'},
         },
         'relations': [], 'events': []
     }
@@ -169,7 +188,7 @@ def test_docs_do_not_collide_stages_with_shared_artifact_prefix(tmp_path):
     registry={'artifacts':{},'relations':[],'events':[]}
     registry['artifacts']={
         'ARC-001': {'id':'ARC-001','type':'ARC','path':str(arch),'unit':'compras','status':'authoritative','authority':'human'},
-        'ARC-002': {'id':'ARC-002','type':'ARC','path':str(sysarch),'unit':'default','status':'authoritative','authority':'human'},
+        'ARC-002': {'id':'ARC-002','type':'ARC','path':str(sysarch),'unit':tmp_path.name,'status':'authoritative','authority':'human'},
     }
     (tmp_path/'.thesys/registry.json').write_text(json.dumps(registry),encoding='utf8')
     main(['config','set','language','pt-BR','--path',str(tmp_path)])
@@ -198,3 +217,76 @@ def test_docs_localize_lifecycle_shell_for_project_language(tmp_path):
     assert 'Arquitetura e Design' in html
     assert 'Integração da Arquitetura do Sistema' in html
     assert 'Perguntas e respostas' in html
+
+
+def test_authoritative_artifact_keeps_clarification_history_after_acceptance(tmp_path):
+    main(['init','--path',str(tmp_path)])
+    main(['config','set','agent_provider','mock','--path',str(tmp_path)])
+    main(['intent','create','Build a platform [[QUESTION:policy]]','--path',str(tmp_path)])
+    main(['next','--path',str(tmp_path)])
+    main(['question','answer','QST-001','A human decision recorded before approval.','--path',str(tmp_path)])
+    main(['next','--path',str(tmp_path)])
+    main(['discovery','accept','--path',str(tmp_path)])
+    html=(tmp_path/'.thesys/docs/index.html').read_text(encoding='utf-8-sig')
+    assert 'A human decision recorded before approval.' in html
+    assert 'QST-001' in html
+
+
+def test_presentation_documentation_omits_project_content(tmp_path):
+    main(['init','--path',str(tmp_path)])
+    main(['config','set','agent_provider','mock','--path',str(tmp_path)])
+    main(['intent','create','Confidential customer pricing and strategic acquisition details.','--path',str(tmp_path)])
+    main(['docs','build','--presentation','--path',str(tmp_path)])
+    html=(tmp_path/'.thesys/docs/index.html').read_text(encoding='utf-8-sig')
+    assert 'Confidential customer pricing' not in html
+    assert 'strategic acquisition' not in html
+    assert 'Thesys Engineering Overview' in html
+    assert 'DISCOVERY & FOUNDATION' not in html or 'Discovery & Foundation' in html
+
+
+def test_docs_phase_groups_expose_status_and_collapse_affordance(tmp_path):
+    from thesys_cli.main import main
+    main(['init','--path',str(tmp_path)])
+    main(['intent','create','Build a documentation test project.','--path',str(tmp_path)])
+    main(['docs','build','--path',str(tmp_path)])
+    html=(tmp_path/'.thesys/docs/index.html').read_text(encoding='utf-8-sig')
+    assert 'phase-status-dot' in html
+    assert 'nav-chevron' in html
+    assert 'nav-phase' in html
+
+
+
+
+def test_documentation_presents_names_before_ids_and_guidance_ids(tmp_path):
+    from thesys_engine.guidance import add_guidance
+    from thesys_engine.methodology import load_methodology
+    main(['init','--path',str(tmp_path)])
+    main(['config','set','language','pt-BR','--path',str(tmp_path)])
+    main(['config','set','agent_provider','mock','--path',str(tmp_path)])
+    main(['intent','create','Criar um sistema de testes de documentação.','--path',str(tmp_path)])
+    main(['next','--path',str(tmp_path)])
+    main(['discovery','accept','--path',str(tmp_path)])
+    main(['next','--path',str(tmp_path)])
+    main(['proposal','accept','governance','--path',str(tmp_path)])
+    m=load_methodology(Path(__file__).parents[1])
+    add_guidance(tmp_path,'governance',tmp_path.name,'directive','Preserve the original boundary.','Limite de governança',methodology=m)
+    main(['docs','build','--path',str(tmp_path)])
+    html=(tmp_path/'.thesys/docs/index.html').read_text(encoding='utf-8-sig')
+    assert 'GUD-001' in html
+    assert 'Limite de governança' in html
+    assert 'x.title} · ${x.id}' in html
+    assert '<strong>${esc(r.title)}</strong><span>${esc(id)}</span>' in html
+    assert "g.id||''" in html
+    assert '${esc(g.title||g.type)}' in html
+
+def test_presentation_docs_do_not_expose_human_guidance(tmp_path):
+    from thesys_cli.main import main
+    from thesys_engine.guidance import add_guidance
+    from thesys_engine.methodology import load_methodology
+    main(['init','--path',str(tmp_path)])
+    m=load_methodology(Path(__file__).parents[1])
+    add_guidance(tmp_path,'intent',tmp_path.name,'directive','Internal project direction: do not expose this.','Internal guidance',methodology=m)
+    main(['docs','build','--presentation','--path',str(tmp_path)])
+    html=(tmp_path/'.thesys/docs/index.html').read_text(encoding='utf-8-sig')
+    assert 'Internal project direction: do not expose this.' not in html
+    assert 'Internal guidance' not in html

@@ -57,3 +57,14 @@ Evidence records what was observed, when it was observed, how it was produced an
 ## Large-system value
 
 The model supports both local and system-level reasoning. A module can maintain detailed engineering knowledge while remaining related to domain-level and system-level decisions. This allows large systems to evolve without losing their higher-level context.
+
+## Lifecycle scopes
+
+Thesys intentionally has only two lifecycle scopes: **project** and **unit**.
+Project-scoped artifacts establish project-wide constraints or integrated views;
+unit-scoped artifacts belong to an approved Engineering Unit. There is no hidden
+third scope.
+
+The Engineering Unit Map (`UNI`) is itself a human-approved project artifact
+produced by the **Engineering Units** lifecycle stage. It defines the work
+scopes used by subsequent unit-scoped stages.

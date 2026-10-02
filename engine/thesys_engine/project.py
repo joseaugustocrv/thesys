@@ -90,7 +90,13 @@ def resolve_project(path, key=None):
 
 
 
-def list_units(project, include_default=True):
+def project_key(project):
+    """Return the canonical identity of the Project root entity."""
+    return project_info(project).get("key") or project.resolve().name
+
+
+def list_units(project):
+    """Return only real Engineering Unit entities."""
     units_dir = project / ".thesys" / "units"
     result = []
     for path in sorted(units_dir.glob("*.json")):
@@ -98,27 +104,38 @@ def list_units(project, include_default=True):
             data = json.loads(read_text(path))
         except json.JSONDecodeError as exc:
             raise ProjectError(f"Invalid engineering unit metadata: {path}") from exc
-        if include_default or data.get("key") != "default":
-            result.append(data)
+        result.append(data)
     return result
 
 
 def work_units(project):
-    """Return engineering units that participate in unit-scoped lifecycle work.
+    """Return real Engineering Units participating in unit-scoped work."""
+    return list_units(project)
 
-    The default system unit remains the fallback for small projects. Once child
-    units exist, they become the unit-scoped work set and the default unit acts
-    as the project/system container.
+
+def work_targets(project):
+    """Return lifecycle targets for unit-scoped stages.
+
+    A project without Engineering Units uses the Project root itself as the
+    single work target. Once Engineering Units exist, only those units are
+    targeted. The Project is never materialized as a fake Engineering Unit.
     """
-    children = list_units(project, include_default=False)
-    if children:
-        return children
-    default = [u for u in list_units(project) if u.get("key") == "default"]
-    return default
+    units = list_units(project)
+    if units:
+        return units
+    info = project_info(project)
+    return [{
+        "key": project_key(project),
+        "name": info.get("name", project_key(project)),
+        "scope": info.get("root_scope", "Project-wide scope"),
+        "type": "project",
+        "parent": None,
+        "dependencies": [],
+    }]
 
 
 def has_child_units(project):
-    return bool(list_units(project, include_default=False))
+    return bool(list_units(project))
 
 
 def ensure_project_within_workspace(project, workspace):
@@ -139,6 +156,8 @@ def _project_metadata(project, methodology, template, name, key):
         "name": name,
         "template": template.id,
         "kind": template.kind,
+        "root_unit_type": template.root_unit_type,
+        "root_scope": template.root_scope,
         "methodology": methodology.name,
         "methodology_version": methodology.version,
         "status": "active",
@@ -257,8 +276,7 @@ def init_project(project, methodology, template=None, name=None, key=None):
     if not (meta/"approvals.json").exists():
         write_text(meta/"approvals.json", json.dumps({"approvals":{}},indent=2)+"\n")
 
-    if not (meta/"units"/"default.json").exists():
-        create_unit(project,"default",project_name,selected.root_scope,selected.root_unit_type,None,methodology)
+    _migrate_legacy_project_root(project, methodology)
 
     # Project creation establishes only system metadata. No engineering artifact is
     # authoritative until an AI proposal is explicitly accepted by a human.
@@ -288,30 +306,190 @@ def set_config(project,key,value):
     c=config(project); c[key]=value; write_text(project/".thesys"/"config.yaml", _write_yaml(c))
 
 
-def create_unit(project,key,name,scope="",unit_type="feature",parent="default",methodology=None,dependencies=None):
-    if not re_key(key): raise ProjectError("Unit key must start with a lowercase letter and contain lowercase letters, numbers, or hyphens.")
-    if key == "default": parent=None
-    if parent and not (project/".thesys"/"units"/f"{parent}.json").is_file(): raise ProjectError(f"Parent engineering unit not found: {parent}")
+def create_unit(project,key,name,scope="",unit_type="feature",parent=None,methodology=None,dependencies=None):
+    root = project_key(project)
+    if not re_key(key):
+        raise ProjectError("Unit key must start with a lowercase letter and contain lowercase letters, numbers, or hyphens.")
+    if key == root:
+        raise ProjectError("Engineering unit key cannot be the same as the Project root key.")
+    if parent in (None, "", "default"):
+        parent = root
+    if parent == key:
+        raise ProjectError("An Engineering Unit cannot be its own parent.")
+    if parent != root and not (project/".thesys"/"units"/f"{parent}.json").is_file():
+        raise ProjectError(f"Parent engineering unit not found: {parent}")
     p=project/".thesys"/"units"/f"{key}.json"
     if p.exists(): raise ProjectError(f"Engineering unit already exists: {key}")
-    payload={"key":key,"name":name,"scope":scope,"type":unit_type,"parent":parent,"dependencies":dependencies or [],"container": key == "default","source_intent":"engineering/intent/intent.md"}
+    payload={"key":key,"name":name,"scope":scope,"type":unit_type,"parent":parent,"dependencies":dependencies or [],"source_intent":"engineering/intent/intent.md"}
     write_text(p,json.dumps(payload,ensure_ascii=False,indent=2)+"\n")
     if methodology is None:
         from .methodology import load_methodology
         methodology=load_methodology(Path(__file__).resolve().parents[2])
-    if key != "default":
-        default_path = project/".thesys"/"units"/"default.json"
-        if default_path.is_file():
-            try:
-                default_data = json.loads(read_text(default_path))
-                if not default_data.get("container"):
-                    default_data["container"] = True
-                    write_text(default_path, json.dumps(default_data, ensure_ascii=False, indent=2) + "\n")
-            except json.JSONDecodeError:
-                pass
     add_event(project,"unit-created",key,{"type":unit_type,"parent":parent,"source_intent":"engineering/intent/intent.md"})
     return p
 
+
+def scope_info(project, key):
+    """Return authoritative metadata for a lifecycle work target.
+
+    The Project root is a valid target for unit-scoped lifecycle stages when no
+    Engineering Units have been decomposed. It is not persisted as a Unit.
+    """
+    root = project_key(project)
+    if key == root and not (project/".thesys"/"units"/f"{key}.json").is_file():
+        info = project_info(project)
+        return {
+            "key": root,
+            "name": info.get("name", root),
+            "scope": info.get("root_scope", "Project-wide scope"),
+            "type": "project",
+            "parent": None,
+            "dependencies": [],
+        }
+    return unit_info(project, key)
+
+
+def _migrate_legacy_project_root(project, methodology):
+    """Migrate the 0.5.0 synthetic ``default`` root to the Project entity.
+
+    Migration is conservative and content-preserving. Project-scoped records and,
+    when no child Units exist, legacy root unit-scoped records are moved to the
+    canonical Project key. Existing child Units keep their identities while a
+    legacy ``default`` parent is rewritten to the Project root.
+    """
+    root = project_key(project)
+    units_dir = project / ".thesys" / "units"
+    legacy = units_dir / "default.json"
+    child_paths = [p for p in units_dir.glob("*.json") if p.stem != "default"]
+    had_legacy_root = legacy.is_file()
+    if had_legacy_root:
+        try:
+            legacy_data = json.loads(read_text(legacy))
+        except json.JSONDecodeError:
+            legacy_data = {}
+    else:
+        legacy_data = {}
+
+    for path in child_paths:
+        try:
+            data = json.loads(read_text(path))
+        except json.JSONDecodeError:
+            continue
+        if data.get("parent") == "default":
+            data["parent"] = root
+            write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+
+    has_children = bool(child_paths)
+    # Move authoritative/proposed unit-scoped artifacts from the old root only
+    # when the project did not decompose. With child Units, those records were
+    # container-era state and must not become authoritative work for the Project.
+    for stage in methodology.stages:
+        if not stage.artifact:
+            continue
+        if stage.config.get("scope") == "project" or not has_children:
+            source = methodology.artifact_path(project, stage, "default")
+            target = methodology.artifact_path(project, stage, root)
+            if source and target and source.is_file() and source.resolve() != target.resolve():
+                if target.exists():
+                    raise ProjectError(f"Cannot migrate legacy artifact because target already exists: {target}")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source.replace(target)
+        if stage.artifact is None and not has_children:
+            source = methodology.execution_path(project, stage, "default")
+            target = methodology.execution_path(project, stage, root)
+            if source.is_file() and source.resolve() != target.resolve():
+                if target.exists():
+                    raise ProjectError(f"Cannot migrate legacy execution record because target already exists: {target}")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source.replace(target)
+
+    proposals = project / ".thesys" / "proposals"
+    legacy_dir = proposals / "default"
+    if legacy_dir.is_dir():
+        target = proposals / root
+        target.mkdir(parents=True, exist_ok=True)
+        project_stage_ids = {s.id for s in methodology.stages if s.config.get("scope") == "project"}
+        unit_stage_ids = {s.id for s in methodology.stages if s.config.get("scope") != "project"}
+        for path in list(legacy_dir.glob("*.json")):
+            stage_id = path.stem
+            if stage_id not in project_stage_ids and (has_children or stage_id not in unit_stage_ids):
+                continue
+            destination = target / path.name
+            if destination.exists():
+                raise ProjectError(f"Cannot migrate legacy proposal because target already exists: {destination}")
+            path.replace(destination)
+            try:
+                data = json.loads(read_text(destination))
+                data["unit"] = root
+                write_text(destination, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+            except json.JSONDecodeError:
+                pass
+        if legacy_dir.exists() and not any(legacy_dir.iterdir()):
+            legacy_dir.rmdir()
+
+    answers_path = project / ".thesys" / "answers.json"
+    if answers_path.is_file():
+        try:
+            answers = json.loads(read_text(answers_path)); changed = False
+            for record in answers.values():
+                if isinstance(record, dict) and record.get("unit") == "default":
+                    record["unit"] = root; changed = True
+            if changed:
+                write_text(answers_path, json.dumps(answers, ensure_ascii=False, indent=2) + "\n")
+        except json.JSONDecodeError:
+            pass
+
+    approvals_path = project / ".thesys" / "approvals.json"
+    if approvals_path.is_file():
+        try:
+            approvals = json.loads(read_text(approvals_path)); changed = False
+            for stage in methodology.stages:
+                if stage.config.get("scope") == "project" or not has_children:
+                    old_key = f"{stage.id}:default"
+                    new_key = f"{stage.id}:{root}"
+                    if old_key in approvals.get("approvals", {}) and new_key not in approvals["approvals"]:
+                        approvals["approvals"][new_key] = approvals["approvals"].pop(old_key)
+                        changed = True
+            if changed:
+                write_text(approvals_path, json.dumps(approvals, ensure_ascii=False, indent=2) + "\n")
+        except json.JSONDecodeError:
+            pass
+
+    registry_path = project / ".thesys" / "registry.json"
+    if registry_path.is_file():
+        try:
+            registry = json.loads(read_text(registry_path)); changed = False
+            legacy_paths = set()
+            canonical_paths = set()
+            for stage in methodology.stages:
+                if not stage.artifact:
+                    continue
+                legacy_path = methodology.artifact_path(project, stage, "default")
+                canonical_path = methodology.artifact_path(project, stage, root)
+                if legacy_path:
+                    legacy_paths.add(str(legacy_path.resolve()))
+                if canonical_path:
+                    canonical_paths.add(str(canonical_path.resolve()))
+            for artifact in registry.get("artifacts", {}).values():
+                if artifact.get("unit") != "default":
+                    continue
+                raw = artifact.get("path", "")
+                try:
+                    resolved = str(Path(raw).resolve())
+                except OSError:
+                    resolved = raw
+                if resolved in legacy_paths or resolved in canonical_paths or not has_children:
+                    artifact["unit"] = root
+                    if resolved in legacy_paths:
+                        artifact["path"] = str(Path(raw).parent.parent / root / Path(raw).name) if not has_children else artifact.get("path")
+                    changed = True
+            if changed:
+                write_text(registry_path, json.dumps(registry, ensure_ascii=False, indent=2) + "\n")
+        except json.JSONDecodeError:
+            pass
+
+    if legacy.exists():
+        legacy.unlink()
 
 def re_key(key): return bool(key) and key[0].islower() and all(c.islower() or c.isdigit() or c=="-" for c in key)
 

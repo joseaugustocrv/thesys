@@ -59,15 +59,24 @@ def parse_front_matter(text: str) -> dict:
     return root
 
 @dataclass(frozen=True)
+class Phase:
+    id: str
+    name: str
+    stage_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Stage:
     id: str
     name: str
-    artifact: str|None
-    template: str|None
+    artifact: str | None
+    template: str | None
     approval: bool
-    depends_on: tuple[str,...]
+    depends_on: tuple[str, ...]
     action: str
     config: dict
+    phase_id: str = ""
+
 
 @dataclass(frozen=True)
 class Methodology:
@@ -76,21 +85,42 @@ class Methodology:
     language: str
     root: Path
     definition: Path
-    stages: tuple[Stage,...]
+    phases: tuple[Phase, ...]
+    stages: tuple[Stage, ...]
     rules: dict
     catalog: dict
+
     def stage(self, stage_id):
         for s in self.stages:
-            if s.id==stage_id: return s
+            if s.id == stage_id:
+                return s
         raise MethodologyError(f"Unknown lifecycle stage: {stage_id}.")
-    def artifact_path(self, project, stage, unit="default"):
-        if not stage.artifact: return None
+
+    def phase(self, phase_id):
+        for phase in self.phases:
+            if phase.id == phase_id:
+                return phase
+        raise MethodologyError(f"Unknown lifecycle phase: {phase_id}.")
+
+    def phase_for_stage(self, stage_id):
+        stage = self.stage(stage_id)
+        return self.phase(stage.phase_id)
+
+    def artifact_path(self, project, stage, unit=None):
+        if unit is None:
+            from .project import project_key
+            unit = project_key(project)
+        if not stage.artifact:
+            return None
         return project / stage.artifact.format(unit=unit)
 
     def action_stages(self, action):
         return tuple(s for s in self.stages if s.action == action)
 
-    def execution_path(self, project, stage, unit="default"):
+    def execution_path(self, project, stage, unit=None):
+        if unit is None:
+            from .project import project_key
+            unit = project_key(project)
         return project / ".thesys" / "executions" / f"{stage.id}-{unit}.json"
 
 def _resolve_methodology_root(repo: Path) -> Path:
@@ -107,20 +137,86 @@ def _resolve_methodology_root(repo: Path) -> Path:
     raise MethodologyError(f"Methodology definition not found. Searched: {searched}")
 
 
+def _build_stage(raw, phase_id):
+    if not isinstance(raw, dict):
+        raise MethodologyError("Each lifecycle stage must be a mapping.")
+    return Stage(
+        id=str(raw["id"]),
+        name=str(raw.get("name", raw["id"])),
+        artifact=raw.get("artifact"),
+        template=raw.get("template"),
+        approval=raw.get("approval", False) is True or raw.get("approval") == "required",
+        depends_on=tuple(raw.get("depends_on", []) or []),
+        action=str(raw.get("action", "document")),
+        config=dict(raw.get("config", {}) or {}),
+        phase_id=phase_id,
+    )
+
+
 def load_methodology(repo: Path) -> Methodology:
     root = _resolve_methodology_root(repo)
     definition = root / "methodology" / "definition" / "lifecycle.md"
-    data=parse_front_matter(read_text(definition)); meta=data.get("thesys",{}); lc=data.get("lifecycle",{})
-    stages=[]
-    for raw in lc.get("stages",[]):
-        if not isinstance(raw,dict): raise MethodologyError("Each lifecycle stage must be a mapping.")
-        stages.append(Stage(str(raw["id"]),str(raw.get("name",raw["id"])),raw.get("artifact"),raw.get("template"),raw.get("approval",False) is True or raw.get("approval")=="required",tuple(raw.get("depends_on",[]) or []),str(raw.get("action","document")),dict(raw.get("config",{}) or {})))
-    if not stages: raise MethodologyError("Methodology defines no stages.")
-    ids={s.id for s in stages}
-    if len(ids)!=len(stages): raise MethodologyError("Lifecycle stage IDs must be unique.")
-    for s in stages:
-        for d in s.depends_on:
-            if d not in ids: raise MethodologyError(f"Stage {s.id} depends on unknown stage {d}.")
-    catalog_path=repo/"methodology"/"definition"/"catalog.json"
-    catalog=json.loads(read_text(catalog_path)) if catalog_path.is_file() else {}
-    return Methodology(str(meta.get("methodology","thesys")),str(meta.get("version","0")),str(meta.get("language","en-US")),root,definition,tuple(stages),dict(lc.get("rules",{})),catalog)
+    data = parse_front_matter(read_text(definition))
+    meta = data.get("thesys", {})
+    lc = data.get("lifecycle", {})
+
+    phases = []
+    stages = []
+    phase_defs = lc.get("phases") or []
+    if phase_defs:
+        for raw_phase in phase_defs:
+            if not isinstance(raw_phase, dict):
+                raise MethodologyError("Each lifecycle phase must be a mapping.")
+            phase_id = str(raw_phase.get("id", "")).strip()
+            if not phase_id:
+                raise MethodologyError("Lifecycle phases require an id.")
+            phase_name = str(raw_phase.get("name", phase_id))
+            phase_stages = []
+            for raw_stage in raw_phase.get("stages", []) or []:
+                stage = _build_stage(raw_stage, phase_id)
+                phase_stages.append(stage.id)
+                stages.append(stage)
+            phases.append(Phase(phase_id, phase_name, tuple(phase_stages)))
+    else:
+        # Backward compatibility for external methodologies using the 0.4 flat form.
+        flat = []
+        for raw in lc.get("stages", []) or []:
+            stage = _build_stage(raw, "default")
+            flat.append(stage)
+            stages.append(stage)
+        phases = [Phase("default", "Lifecycle", tuple(s.id for s in flat))]
+
+    if not stages:
+        raise MethodologyError("Methodology defines no lifecycle stages.")
+    phase_ids = {p.id for p in phases}
+    if len(phase_ids) != len(phases):
+        raise MethodologyError("Lifecycle phase IDs must be unique.")
+    stage_ids = {s.id for s in stages}
+    if len(stage_ids) != len(stages):
+        raise MethodologyError("Lifecycle stage IDs must be unique.")
+    if set().union(*(set(p.stage_ids) for p in phases)) != stage_ids:
+        raise MethodologyError("Every lifecycle stage must belong to exactly one phase.")
+
+    positions = {stage.id: index for index, stage in enumerate(stages)}
+    for stage in stages:
+        if stage.phase_id not in phase_ids:
+            raise MethodologyError(f"Stage {stage.id} references unknown lifecycle phase {stage.phase_id}.")
+        for dep in stage.depends_on:
+            if dep not in stage_ids:
+                raise MethodologyError(f"Stage {stage.id} depends on unknown stage {dep}.")
+            if positions[dep] >= positions[stage.id]:
+                raise MethodologyError(f"Stage {stage.id} depends on stage {dep}, which is not earlier in the canonical lifecycle order.")
+
+    catalog_path = root / "methodology" / "definition" / "catalog.json"
+    catalog = json.loads(read_text(catalog_path)) if catalog_path.is_file() else {}
+    return Methodology(
+        str(meta.get("methodology", "thesys")),
+        str(meta.get("version", "0")),
+        str(meta.get("language", "en-US")),
+        root,
+        definition,
+        tuple(phases),
+        tuple(stages),
+        dict(lc.get("rules", {})),
+        catalog,
+    )

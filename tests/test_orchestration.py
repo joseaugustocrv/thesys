@@ -35,7 +35,7 @@ def test_next_automatically_proposes_discovery_then_units_then_lifecycle(tmp_pat
 
     # `next` now performs discovery proposal generation; no explicit `discovery propose`.
     assert cli(tmp_path, "next") == 0
-    discovery = tmp_path / ".thesys" / "proposals" / "default" / "intent.json"
+    discovery = tmp_path / ".thesys" / "proposals" / "test-project" / "intent.json"
     assert discovery.is_file()
     assert (tmp_path / ".thesys" / "docs" / "index.html").is_file()
 
@@ -44,13 +44,13 @@ def test_next_automatically_proposes_discovery_then_units_then_lifecycle(tmp_pat
     # Discovery establishes only the Intent. Governance is the next project-level phase;
     # Context is generated only after Engineering Units are known.
     assert cli(tmp_path, "next") == 0
-    assert (tmp_path / ".thesys" / "proposals" / "default" / "governance.json").is_file()
+    assert (tmp_path / ".thesys" / "proposals" / "test-project" / "governance.json").is_file()
     assert cli(tmp_path, "proposal", "accept", "governance") == 0
 
     # Once those baselines are current, `next` automatically asks the configured
     # agent for Engineering Units. The proposal remains non-authoritative.
     assert cli(tmp_path, "next") == 0
-    units_proposal = tmp_path / ".thesys" / "proposals" / "engineering-units" / "proposal.json"
+    units_proposal = tmp_path / ".thesys" / "proposals" / "test-project" / "engineering-units.json"
     assert units_proposal.is_file()
     docs_after_units = (tmp_path / ".thesys" / "docs" / "index.html").read_text(encoding='utf-8-sig')
     assert "Engineering Unit" in docs_after_units or "Lifecycle" in docs_after_units
@@ -60,7 +60,7 @@ def test_next_automatically_proposes_discovery_then_units_then_lifecycle(tmp_pat
     # Human acceptance remains explicit; it is not hidden by orchestration.
     assert cli(tmp_path, "unit", "proposal", "accept") == 0
     units = sorted(p.stem for p in (tmp_path / ".thesys" / "units").glob("*.json"))
-    assert units == ["default", "finance-inventory-sales-purchasing"] or len(units) >= 2
+    assert units == ["test-project", "finance-inventory-sales-purchasing"] or len(units) >= 2
 
     # Context is now proposed as a phase for every effective Engineering Unit.
     assert cli(tmp_path, "next") == 0
@@ -76,7 +76,7 @@ def test_next_regenerates_stale_discovery_proposal_after_answers(tmp_path):
 
     # First next creates the AI discovery proposal with a blocking question.
     assert cli(tmp_path, "next") == 0
-    proposal_path = tmp_path / ".thesys" / "proposals" / "default" / "intent.json"
+    proposal_path = tmp_path / ".thesys" / "proposals" / "test-project" / "intent.json"
     first = json.loads(proposal_path.read_text(encoding='utf-8-sig'))
     assert first["status"] == "proposed"
     assert first["questions"]
@@ -125,9 +125,15 @@ def test_next_walks_multiple_units_and_system_architecture(tmp_path):
     m = load_methodology(ROOT)
     for _ in range(100):
         action = next_action(tmp_path, m)
-        if action.kind in {"propose_phase", "regenerate_phase"}:
+        if action.stage == "system-architecture" and action.kind == "human_review_stage":
+            for unit in ["test-project"]:
+                proposal = tmp_path / ".thesys" / "proposals" / unit / "system-architecture.json"
+                if proposal.is_file():
+                    assert cli(tmp_path, "proposal", "accept", "system-architecture", "--unit", unit) == 0
+            break
+        if action.kind in {"propose_stage", "regenerate_stage"}:
             assert cli(tmp_path, "next") == 0
-        elif action.kind == "human_review_phase":
+        elif action.kind == "human_review_stage":
             units = [p.stem for p in (tmp_path / ".thesys" / "units").glob("*.json")]
             stage = action.stage
             for unit in units:
@@ -165,8 +171,8 @@ def test_small_project_can_remain_on_default_unit(tmp_path):
     assert cli(tmp_path, "next") == 0
     assert cli(tmp_path, "unit", "proposal", "accept") == 0
     units = [p.stem for p in (tmp_path / ".thesys" / "units").glob("*.json")]
-    assert units == ["default"]
-    assert next_action(tmp_path, load_methodology(ROOT)).kind == "propose_phase"
+    assert units == []
+    assert next_action(tmp_path, load_methodology(ROOT)).kind == "propose_stage"
 
 
 def test_generic_proposal_accept_dispatches_discovery_contract(tmp_path):
@@ -178,7 +184,7 @@ def test_generic_proposal_accept_dispatches_discovery_contract(tmp_path):
     # for the Intent stage, including its composite Intent+Context fingerprint.
     assert cli(tmp_path, "proposal", "accept", "intent") == 0
     assert (tmp_path / "engineering/intent/intent.md").is_file()
-    assert not (tmp_path / "engineering/context/default/context.md").exists()
+    assert not (tmp_path / "engineering/context/test-project/context.md").exists()
 
 
 
@@ -190,14 +196,16 @@ def test_engineering_units_proposal_show_and_accept_are_supported(tmp_path):
     main(['intent','create','Build a distributed sales platform.','--path',str(tmp_path)])
     main(['discovery','propose','--agent','mock','--path',str(tmp_path)])
     main(['discovery','accept','--path',str(tmp_path)])
+    main(['generate','governance','--agent','mock','--path',str(tmp_path)])
+    main(['proposal','accept','governance','--path',str(tmp_path)])
     m=load_methodology(Path(__file__).parents[1])
-    write_proposal(tmp_path,'mock',[UnitProposal('sales','Sales','Sales domain','Explicit domain','domain','default',())],True)
+    write_proposal(tmp_path,'mock',[UnitProposal('sales','Sales','Sales domain','Explicit domain','domain','test-project',())],True)
     assert main(['proposal','show','engineering-units','--path',str(tmp_path)]) == 0
     assert main(['proposal','accept','engineering-units','--path',str(tmp_path)]) == 0
     units=list((tmp_path/'.thesys/units').glob('*.json'))
     assert (tmp_path/'.thesys/units/sales.json').is_file()
-    default=json.loads((tmp_path/'.thesys/units/default.json').read_text(encoding='utf-8'))
-    assert default['container'] is True
+    unit_data=json.loads((tmp_path/'.thesys/units' / 'sales.json').read_text(encoding='utf-8'))
+    assert unit_data['parent'] == tmp_path.name
 
 
 def test_next_reaches_and_accepts_plan_after_full_preimplementation_flow(tmp_path):
@@ -218,7 +226,7 @@ def test_next_reaches_and_accepts_plan_after_full_preimplementation_flow(tmp_pat
     methodology = load_methodology(ROOT)
     for _ in range(100):
         action = next_action(tmp_path, methodology)
-        if action.stage == 'plan' and action.kind == 'human_review_phase':
+        if action.stage == 'plan' and action.kind == 'human_review_stage':
             proposal_files = sorted((tmp_path / '.thesys' / 'proposals').rglob('plan.json'))
             assert proposal_files
             for proposal_path in proposal_files:
@@ -227,7 +235,7 @@ def test_next_reaches_and_accepts_plan_after_full_preimplementation_flow(tmp_pat
                     assert cli(tmp_path, 'proposal', 'accept', 'plan', '--unit', proposal['unit']) == 0
             break
 
-        if action.kind in {'answer_questions', 'answer_phase_questions'}:
+        if action.kind in {'answer_questions', 'answer_stage_questions'}:
             paths = [action.proposal] if action.kind == 'answer_questions' else sorted(
                 (tmp_path / '.thesys' / 'proposals').rglob(f'{action.stage}.json')
             )
@@ -245,17 +253,13 @@ def test_next_reaches_and_accepts_plan_after_full_preimplementation_flow(tmp_pat
             continue
 
         if action.kind in {
-            'propose_discovery', 'propose', 'propose_phase',
-            'regenerate', 'regenerate_phase', 'propose_units',
+            'propose_discovery', 'propose', 'propose_stage',
+            'regenerate', 'regenerate_stage', 'propose_stage', 'propose_implementation', 'verify',
         }:
             assert cli(tmp_path, 'next') == 0
             continue
 
-        if action.kind == 'human_review_units':
-            assert cli(tmp_path, 'unit', 'proposal', 'accept') == 0
-            continue
-
-        if action.kind == 'human_review_phase':
+        if action.kind == 'human_review_stage':
             proposal_files = sorted((tmp_path / '.thesys' / 'proposals').rglob(f'{action.stage}.json'))
             for proposal_path in proposal_files:
                 proposal = json.loads(proposal_path.read_text(encoding='utf-8-sig'))
@@ -264,14 +268,14 @@ def test_next_reaches_and_accepts_plan_after_full_preimplementation_flow(tmp_pat
             continue
 
         if action.kind == 'human_review':
-            assert cli(tmp_path, 'proposal', 'accept', action.stage, '--unit', action.unit) == 0
+            assert (cli(tmp_path, 'implementation', 'accept') if action.stage == 'implementation' else cli(tmp_path, 'proposal', 'accept', action.stage, '--unit', action.unit)) == 0
             continue
 
         raise AssertionError(f'Unexpected orchestration action: {action}')
     else:
         raise AssertionError('The lifecycle did not reach an approvable Plan within 100 transitions.')
 
-    plan = tmp_path / 'engineering' / 'plan' / 'default' / 'plan.md'
+    plan = tmp_path / 'engineering' / 'plan' / 'test-project' / 'plan.md'
     assert plan.is_file()
 
 
@@ -322,23 +326,23 @@ def test_question_gate_obeys_model_blocking_classification(tmp_path):
 
     assert cli(tmp_path, 'init') == 0
     m = load_methodology(ROOT)
-    inputs = authoritative_inputs(tmp_path, m, m.stage('clarification'), 'default')
+    inputs = authoritative_inputs(tmp_path, m, m.stage('clarification'), tmp_path.name)
 
     save_proposal(
-        tmp_path, 'clarification', 'default', 'mock', 'content',
+        tmp_path, 'clarification', 'test-project', 'mock', 'content',
         [{'question': 'Decisão material?', 'why': 'Necessária agora.', 'blocking': False}],
         inputs, m,
     )
     from thesys_engine.orchestration import _phase_action
     action = _phase_action(tmp_path, m, m.stage('clarification'))
-    assert action.kind == 'human_review_phase'
+    assert action.kind == 'human_review_stage'
 
-    path = tmp_path / '.thesys/proposals/default/clarification.json'
+    path = tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'clarification.json'
     proposal = json.loads(path.read_text(encoding='utf-8-sig'))
     proposal['questions'][0]['blocking'] = True
     path.write_text(json.dumps(proposal, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     action = _phase_action(tmp_path, m, m.stage('clarification'))
-    assert action.kind == 'answer_phase_questions'
+    assert action.kind == 'answer_stage_questions'
 
 
 def test_executable_stages_do_not_use_generic_document_proposals(tmp_path):
@@ -356,22 +360,22 @@ def test_executable_stages_do_not_use_generic_document_proposals(tmp_path):
     # Advance the document stages using the existing mock flow until Plan is current.
     for _ in range(100):
         action = next_action(tmp_path, m)
-        if action.stage in {'plan', 'tasks'} and action.kind == 'human_review_phase':
+        if action.stage in {'plan', 'tasks'} and action.kind == 'human_review_stage':
             for path in sorted((tmp_path / '.thesys/proposals').rglob(f'{action.stage}.json')):
                 proposal = json.loads(path.read_text(encoding='utf-8-sig'))
                 if proposal.get('status') == 'proposed':
                     assert cli(tmp_path, 'proposal', 'accept', action.stage, '--unit', proposal['unit']) == 0
             if action.stage == 'tasks':
                 break
-        if action.kind == 'human_review_phase':
+        if action.kind == 'human_review_stage':
             for path in sorted((tmp_path / '.thesys/proposals').rglob(f'{action.stage}.json')):
                 proposal = json.loads(path.read_text(encoding='utf-8-sig'))
                 if proposal.get('status') == 'proposed':
                     assert cli(tmp_path, 'proposal', 'accept', action.stage, '--unit', proposal['unit']) == 0
-        elif action.kind in {'propose_phase', 'propose', 'regenerate_phase', 'regenerate'}:
+        elif action.kind in {'propose_stage', 'propose', 'regenerate_stage', 'regenerate', 'propose_implementation', 'verify'}:
             assert cli(tmp_path, 'next') == 0
         elif action.kind == 'human_review':
-            assert cli(tmp_path, 'proposal', 'accept', action.stage, '--unit', action.unit) == 0
+            assert (cli(tmp_path, 'implementation', 'accept') if action.stage == 'implementation' else cli(tmp_path, 'proposal', 'accept', action.stage, '--unit', action.unit)) == 0
         else:
             raise AssertionError(action)
     else:
@@ -380,7 +384,7 @@ def test_executable_stages_do_not_use_generic_document_proposals(tmp_path):
     action = next_action(tmp_path, m)
     assert action.kind == 'propose_implementation'
     assert action.stage == 'implementation'
-    assert not (tmp_path / '.thesys/proposals/default/implementation.json').exists()
+    assert not (tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'implementation.json').exists()
 
 
 def test_next_regenerates_current_governance_after_its_question_is_answered(tmp_path):
@@ -391,7 +395,7 @@ def test_next_regenerates_current_governance_after_its_question_is_answered(tmp_
     assert cli(tmp_path, "discovery", "accept") == 0
     assert cli(tmp_path, "next") == 0
 
-    proposal_path = tmp_path / ".thesys" / "proposals" / "default" / "governance.json"
+    proposal_path = tmp_path / ".thesys" / "proposals" / "test-project" / "governance.json"
     data = json.loads(proposal_path.read_text(encoding="utf-8-sig"))
     data["questions"] = [{
         "id": "QST-001",
@@ -409,7 +413,7 @@ def test_next_regenerates_current_governance_after_its_question_is_answered(tmp_
     regenerated = json.loads(proposal_path.read_text(encoding="utf-8-sig"))
     assert regenerated["stage"] == "governance"
     assert regenerated["questions"] == []
-    assert json.loads((tmp_path / ".thesys" / "proposals" / "default" / "intent.json").read_text(encoding="utf-8-sig"))["status"] != "needs_regeneration"
+    assert json.loads((tmp_path / ".thesys" / "proposals" / "test-project" / "intent.json").read_text(encoding="utf-8-sig"))["status"] != "needs_regeneration"
 
 
 def test_discovery_cannot_be_restarted_after_intent_is_approved(tmp_path):

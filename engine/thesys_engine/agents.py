@@ -19,6 +19,7 @@ class GenerationContext:
     unit_dependencies: tuple = ()
     clarification_history: list = field(default_factory=list)
     artifact_index: dict = field(default_factory=dict)
+    human_guidance: dict = field(default_factory=dict)
 
 
 
@@ -60,6 +61,9 @@ def _lifecycle_question_context(methodology, current_stage):
             "human_approval_required_before_progression": methodology.rules.get("human_approval_required_before_progression", True),
             "unresolved_questions_block_affected_gate": methodology.rules.get("unresolved_questions_block_affected_gate", True),
             "question_blocking": methodology.rules.get("question_blocking", {}),
+            "human_guidance_is_optional": methodology.rules.get("human_guidance_is_optional", True),
+            "human_guidance_is_non_authoritative": methodology.rules.get("human_guidance_is_non_authoritative", True),
+            "human_guidance_propagates_downstream": methodology.rules.get("human_guidance_propagates_downstream", True),
         },
     }
 
@@ -71,7 +75,7 @@ class Agent:
     def propose_code(self, *a, **k): raise NotImplementedError
 
 
-def _generic_sections(methodology, stage, language, unit):
+def _generic_sections(methodology, stage, language, unit, entity_label="Unit"):
     contract = template_contract(methodology, stage)
     pt = language.lower().startswith('pt-')
     sections = {}
@@ -80,8 +84,8 @@ def _generic_sections(methodology, stage, language, unit):
             sections[section.id] = '**Status:** Rascunho' if pt else '**Status:** Draft'
         else:
             sections[section.id] = (
-                f'Conteúdo proposto para a seção da Unidade {unit}.' if pt else
-                f'Proposed content for the Unit {unit}.'
+                f'Conteúdo proposto para a seção do {entity_label} {unit}.' if pt else
+                f'Proposed content for the {entity_label} {unit}.'
             )
     return sections
 
@@ -89,7 +93,7 @@ def _generic_sections(methodology, stage, language, unit):
 class MockAgent(Agent):
     name = 'mock'
 
-    def propose_discovery(self, m, human_input, answers, project):
+    def propose_discovery(self, m, human_input, answers, project, guidance=None):
         language = project_language(project, m.language)
         pt = language.lower().startswith('pt-')
         intent_contract = template_contract(m, 'intent')
@@ -108,6 +112,9 @@ class MockAgent(Agent):
         scope_answer = answer_containing('escopo')
         success_answer = answer_containing('sucesso') or answer_containing('resultado observável')
         constraints_answer = answer_containing('restrições') or answer_containing('regulat')
+        guidance_text = '\n'.join(str(item.get('content', '')) for item in (guidance or {}).values() if item.get('content'))
+        if guidance_text:
+            constraints_answer = (constraints_answer + '\n' + guidance_text).strip()
         intent['desired-outcome'] = success_answer or human_input.strip()
         intent['users-and-stakeholders'] = users_answer
         intent['scope'] = scope_answer
@@ -137,13 +144,14 @@ class MockAgent(Agent):
         }
 
     def propose_document(self, m, stage, c):
-        sections = _generic_sections(m, stage, c.language, c.unit)
+        entity_label = 'Projeto' if c.unit_type == 'project' and c.language.lower().startswith('pt-') else ('Project' if c.unit_type == 'project' else 'Unidade' if c.language.lower().startswith('pt-') else 'Unit')
+        sections = _generic_sections(m, stage, c.language, c.unit, entity_label)
         if m.stage(stage).config.get('aggregate_units'):
             names = []
             for key, meta in sorted(c.related_units.items()):
                 name = meta.get('name', key) if isinstance(meta, dict) else key
                 names.append(f'- {name} ({key})')
-            sections['engineering-unit-map'] = '\n'.join(names) if names else '- default'
+            sections['engineering-unit-map'] = '\n'.join(names) if names else '- project'
         return {'sections': sections, 'questions': []}
 
     def propose_code(self, m, c):
@@ -212,7 +220,7 @@ class OpenAIAgent(Agent):
         specific = catalog.get('stages', {}).get(stage, [])
         return ' '.join([*common, *specific])
 
-    def propose_discovery(self, m, human_input, answers, project):
+    def propose_discovery(self, m, human_input, answers, project, guidance=None):
         language = project_language(project, m.language)
         intent_schema = template_schema(m, 'intent')
         context_schema = template_schema(m, 'context')
@@ -230,11 +238,13 @@ class OpenAIAgent(Agent):
             self._language_rule(language) + ' ' +
             ' '.join(self._prompt_catalog(m).get('common', [])) + ' ' +
             ' '.join(self._prompt_catalog(m).get('discovery', [])) + ' ' +
+            'Human guidance is optional and non-authoritative. Use applicable guidance to orient discovery, but never silently override an approved artifact or decision. If guidance conflicts materially with authoritative context, surface the conflict through a blocking question.' + ' ' +
             'Fill every section key with substantive content; an intentionally empty section is allowed only when the source genuinely does not support content.'
         )
         inp = (
             f'Human Intent Input:\n{human_input}\n\n'
             f'Previous human answers:\n{json.dumps(answers, ensure_ascii=False, indent=2)}\n\n'
+            f'Human guidance applicable to discovery:\n{json.dumps(guidance or {}, ensure_ascii=False, indent=2)}\n\n'
             f'Project metadata:\n{(project/".thesys/project.yaml").read_text(encoding="utf-8")}\n\n'
             f'Intent structural contract:\n{json.dumps(template_schema(m,"intent"), ensure_ascii=False, indent=2)}\n\n'
             f'Context structural contract:\n{json.dumps(template_schema(m,"context"), ensure_ascii=False, indent=2)}'
@@ -260,7 +270,8 @@ class OpenAIAgent(Agent):
             )
         instructions = (
             self._stage_prompt(m, stage) + ' ' +
-            'Produce a non-authoritative Thesys artifact proposal using only the supplied authoritative inputs, artifact index, human answers and clarification history. ' +
+            'Produce a non-authoritative Thesys artifact proposal using only the supplied authoritative inputs, artifact index, human answers, clarification history and applicable human guidance. ' +
+            'Human guidance is optional and non-authoritative: use it to orient the proposal, but never silently override an authoritative artifact or approved decision. If guidance conflicts with authoritative context, surface the conflict as a blocking question when it materially affects the current stage. ' +
             'Every artifact supplied under Authoritative artifacts is already human-approved and authoritative for this stage. ' +
             'Never ask whether an authoritative artifact, decision, requirement, clarification, or governance record is approved; its presence establishes authority. ' +
             self._language_rule(c.language) + ' ' +
@@ -279,6 +290,7 @@ class OpenAIAgent(Agent):
             f'Artifact index (authoritative IDs and paths):\n{json.dumps(c.artifact_index, ensure_ascii=False, indent=2)}\n\n'
             f'Human answers:\n{json.dumps(c.answers, ensure_ascii=False, indent=2)}\n\n'
             f'Clarification history for this stage and unit:\n{json.dumps(c.clarification_history, ensure_ascii=False, indent=2)}\n\n'
+            f'Human guidance applicable to this stage:\n{json.dumps(c.human_guidance, ensure_ascii=False, indent=2)}\n\n'
             f'Related Unit architecture inputs:\n{json.dumps(c.related_units, ensure_ascii=False, indent=2)}\n\n'
             f'Structural contract:\n{json.dumps(template_schema(m,stage), ensure_ascii=False, indent=2)}\n\n'
             f'Complete lifecycle contract:\n{json.dumps(_lifecycle_question_context(m, stage), ensure_ascii=False, indent=2)}'
@@ -294,12 +306,17 @@ class OpenAIAgent(Agent):
             },
             'required': ['files','questions'], 'additionalProperties': False,
         }
+        rules=m.rules.get('implementation',{})
+        allowed_roots=list(rules.get('allowed_roots',[]))
+        allowed_root_files=list(rules.get('allowed_root_files',[]))
         instructions = (
             f'Generate a non-authoritative implementation proposal from approved engineering artifacts. Project language: {c.language}. '
             'Write human-readable comments and docstrings in the project language while preserving code syntax, identifiers, paths and API names. '
-            'Return only relative paths under allowed roots. Never include secrets or claim that tests were executed.'
+            f'Return only project-relative files under these allowed roots: {json.dumps(allowed_roots,ensure_ascii=False)}. '
+            f'Root-level files are allowed only when explicitly listed here: {json.dumps(allowed_root_files,ensure_ascii=False)}. '
+            'Never include secrets or claim that tests were executed.'
         )
-        inp = f'Unit: {c.unit}\nScope: {c.unit_scope}\nAuthoritative artifacts:\n{json.dumps(c.approved_artifacts,ensure_ascii=False,indent=2)}\nHuman answers:\n{json.dumps(c.answers,ensure_ascii=False,indent=2)}'
+        inp = f'Unit: {c.unit}\nScope: {c.unit_scope}\nAllowed roots: {json.dumps(allowed_roots,ensure_ascii=False)}\nAllowed root files: {json.dumps(allowed_root_files,ensure_ascii=False)}\nAuthoritative artifacts:\n{json.dumps(c.approved_artifacts,ensure_ascii=False,indent=2)}\nHuman answers:\n{json.dumps(c.answers,ensure_ascii=False,indent=2)}'
         return self._call(instructions, inp, schema, 'thesys_implementation_proposal')
 
 

@@ -59,14 +59,14 @@ def test_discovery_accept_keeps_lifecycle_status_out_of_intent_content(tmp_path)
     intent = "# Intent — Plataforma\n\n## Propósito\n\nCriar uma solução para pequenas empresas.\n\n## Questões em aberto\n\nNenhuma.\n"
     context = "# Contexto — Plataforma\n\n## Contexto\n\nContexto válido."
     inputs={'intent_input':(project/'engineering/intent/input.md').read_text(encoding='utf-8-sig'),'answers':{},'project_template':(project/'.thesys/project.yaml').read_text(encoding='utf-8-sig')}
-    save_proposal(project,'intent','default','mock',json.dumps({'intent':intent,'context':context},ensure_ascii=False),[],inputs)
+    save_proposal(project,'intent',project.name,'mock',json.dumps({'intent':intent,'context':context},ensure_ascii=False),[],inputs)
     accept_discovery(project,m)
     content=(project/'engineering/intent/intent.md').read_text(encoding='utf-8-sig')
     assert 'Status:' not in content
     assert 'Owner:' not in content
     assert 'Version:' not in content
     assert status(project,m)['intent']['status'] == 'approved'
-    assert not (project/'engineering/context/default/context.md').exists()
+    assert not (project/f'engineering/context/{tmp_path.name}/context.md').exists()
 
 
 def test_write_text_is_windows_utf8_compatible(tmp_path):
@@ -98,11 +98,11 @@ def test_runtime_does_not_semantically_resolve_answered_questions(tmp_path):
     main(['init','--path',str(tmp_path)])
     main(['intent','create','Build a platform.','--path',str(tmp_path)])
     question={"question":"Qual é o estilo arquitetural?","why":"A decisão é necessária para aprovar a arquitetura.","blocking":True}
-    save_proposal(tmp_path,'architecture','default','mock','Contexto inicial',[question],{'source':'first'},m)
+    save_proposal(tmp_path,'architecture','test-project','mock','Contexto inicial',[question],{'source':'first'},m)
     main(['question','answer','QST-001','SUA RESPOSTA','--path',str(tmp_path)])
     regenerated={"question":"Qual estilo arquitetural deve ser adotado?","why":"A decisão continua necessária para aprovar a arquitetura.","blocking":True}
-    save_proposal(tmp_path,'architecture','default','mock','Contexto regenerado',[regenerated],{'source':'second'},m)
-    proposal=json.loads((tmp_path/'.thesys/proposals/default/architecture.json').read_text(encoding='utf-8-sig'))
+    save_proposal(tmp_path,'architecture','test-project','mock','Contexto regenerado',[regenerated],{'source':'second'},m)
+    proposal=json.loads((tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'architecture.json').read_text(encoding='utf-8-sig'))
     assert proposal['questions'][0]['id']=='QST-002'
     assert proposal['questions'][0]['blocking'] is True
     assert proposal['clarification_history'][0]['id']=='QST-001'
@@ -130,7 +130,7 @@ def test_runtime_assigns_canonical_question_ids_and_ignores_model_identity(tmp_p
     save_proposal(
         tmp_path,
         'intent',
-        'default',
+        'test-project',
         'mock',
         'proposal',
         [{
@@ -142,7 +142,7 @@ def test_runtime_assigns_canonical_question_ids_and_ignores_model_identity(tmp_p
         {'source': 'first'},
         methodology,
     )
-    proposal = json.loads((tmp_path / '.thesys/proposals/default/intent.json').read_text(encoding='utf-8'))
+    proposal = json.loads((tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'intent.json').read_text(encoding='utf-8'))
     assert proposal['questions'][0]['id'] == 'QST-001'
 
 
@@ -153,17 +153,17 @@ def test_runtime_preserves_question_identity_and_history_across_regeneration(tmp
     main(['intent', 'create', 'Build a platform.', '--path', str(tmp_path)])
     methodology = load_methodology(ROOT)
     save_proposal(
-        tmp_path, 'intent', 'default', 'mock', 'first',
+        tmp_path, 'intent', 'test-project', 'mock', 'first',
         [{'question': 'Quais usuários serão atendidos?', 'why': 'Define os usuários.', 'blocking': True}],
         {'source': 'first'}, methodology,
     )
-    first_path = tmp_path / '.thesys/proposals/default/intent.json'
+    first_path = tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'intent.json'
     first = json.loads(first_path.read_text(encoding='utf-8'))
     assert first['questions'][0]['id'] == 'QST-001'
 
     main(['question', 'answer', 'QST-001', 'Vendedores e gestores.', '--path', str(tmp_path)])
     save_proposal(
-        tmp_path, 'intent', 'default', 'mock', 'second',
+        tmp_path, 'intent', 'test-project', 'mock', 'second',
         [{'question': 'Quais são os principais usuários do sistema?', 'why': 'Define os usuários principais.', 'blocking': True}],
         {'source': 'second'}, methodology,
     )
@@ -194,11 +194,11 @@ def test_question_ids_are_project_wide_and_never_reused(tmp_path):
     main(['intent', 'create', 'Build a platform.', '--path', str(tmp_path)])
     methodology = load_methodology(ROOT)
     question = {'question': 'Qual é o objetivo de negócio?', 'why': 'Define o resultado.', 'blocking': True}
-    save_proposal(tmp_path, 'intent', 'default', 'mock', 'intent', [question], {'stage': 'intent'}, methodology)
-    save_proposal(tmp_path, 'governance', 'default', 'mock', 'governance', [question], {'stage': 'governance'}, methodology)
+    save_proposal(tmp_path, 'intent', tmp_path.name, 'mock', 'intent', [question], {'stage': 'intent'}, methodology)
+    save_proposal(tmp_path, 'governance', tmp_path.name, 'mock', 'governance', [question], {'stage': 'governance'}, methodology)
 
-    intent = json.loads((tmp_path / '.thesys/proposals/default/intent.json').read_text(encoding='utf-8'))
-    governance = json.loads((tmp_path / '.thesys/proposals/default/governance.json').read_text(encoding='utf-8'))
+    intent = json.loads((tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'intent.json').read_text(encoding='utf-8'))
+    governance = json.loads((tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'governance.json').read_text(encoding='utf-8'))
     assert intent['questions'][0]['id'] == 'QST-001'
     assert governance['questions'][0]['id'] == 'QST-002'
 
@@ -212,8 +212,8 @@ def test_runtime_preserves_model_blocking_decision_for_clarification(tmp_path):
         {'question': 'Quais são os campos definitivos da operação?', 'why': 'A decisão é necessária antes de aprovar o baseline.', 'blocking': True},
         {'question': 'Quais são os campos definitivos da operação?', 'why': 'O detalhamento pertence à Specification.', 'blocking': False},
     ]
-    save_proposal(tmp_path, 'clarification', 'default', 'mock', 'clarification', questions, {'source': 'test'}, methodology)
-    proposal = json.loads((tmp_path / '.thesys/proposals/default/clarification.json').read_text(encoding='utf-8-sig'))
+    save_proposal(tmp_path, 'clarification', tmp_path.name, 'mock', 'clarification', questions, {'source': 'test'}, methodology)
+    proposal = json.loads((tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'clarification.json').read_text(encoding='utf-8-sig'))
     assert [q['blocking'] for q in proposal['questions']] == [True, False]
 
 
@@ -224,7 +224,7 @@ def test_runtime_requires_boolean_blocking_value(tmp_path):
     methodology = load_methodology(ROOT)
     try:
         save_proposal(
-            tmp_path, 'clarification', 'default', 'mock', 'clarification',
+            tmp_path, 'clarification', 'test-project', 'mock', 'clarification',
             [{'question': 'Uma pergunta válida?', 'why': 'Motivo válido.', 'blocking': 'true'}],
             {'source': 'test'}, methodology,
         )

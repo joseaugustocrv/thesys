@@ -22,6 +22,8 @@ def prepare_units(project):
     assert cli(project, 'discovery', 'accept') == 0
     assert cli(project, 'generate', 'governance', '--agent', 'mock') == 0
     assert cli(project, 'proposal', 'accept', 'governance') == 0
+    assert cli(project, 'generate', 'engineering-units', '--agent', 'mock') == 0
+    assert cli(project, 'proposal', 'accept', 'engineering-units') == 0
     assert cli(project, 'unit', 'create', 'finance', 'Finance', '--type', 'domain', '--scope', 'Financial operations') == 0
     assert cli(project, 'unit', 'create', 'inventory', 'Inventory', '--type', 'domain', '--scope', 'Inventory operations') == 0
 
@@ -40,10 +42,10 @@ def test_large_project_uses_unit_artifacts_and_integrates_architecture(tmp_path)
     m = load_methodology(ROOT)
     assert status(tmp_path, m, 'finance')['architecture']['status'] == 'approved'
     assert status(tmp_path, m, 'inventory')['architecture']['status'] == 'approved'
-    assert status(tmp_path, m, 'default')['requirements']['status'] == 'approved'
+    assert status(tmp_path, m, tmp_path.name)['requirements']['status'] == 'approved'
 
     assert cli(tmp_path, 'generate', 'system-architecture', '--agent', 'mock') == 0
-    proposal = json.loads((tmp_path / '.thesys/proposals/default/system-architecture.json').read_text(encoding='utf-8-sig'))
+    proposal = json.loads((tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'system-architecture.json').read_text(encoding='utf-8-sig'))
     assert 'architecture:finance' in proposal['content'] or 'finance' in proposal['content']
     assert cli(tmp_path, 'proposal', 'accept', 'system-architecture') == 0
 

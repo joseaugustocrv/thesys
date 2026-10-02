@@ -18,12 +18,14 @@ def test_proposal_accept_preserves_document_content_and_registry_is_authoritativ
     assert cli('discovery', 'accept') == 0
     assert cli('generate', 'governance', '--agent', 'mock') == 0
 
-    proposal_path = tmp_path / '.thesys' / 'proposals' / 'default' / 'governance.json'
+    proposal_path = tmp_path / '.thesys' / 'proposals' / 'test-project' / 'governance.json'
     proposal = json.loads(proposal_path.read_text(encoding='utf-8-sig'))
     original_content = proposal['content']
     proposal_path.write_text(json.dumps(proposal, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 
     assert cli('proposal', 'accept', 'governance') == 0
+    main(['generate','engineering-units','--agent','mock','--path',str(tmp_path)])
+    main(['proposal','accept','engineering-units','--path',str(tmp_path)])
 
     artifact = tmp_path / 'engineering' / 'governance' / 'governance.md'
     content = artifact.read_text(encoding='utf-8-sig')
@@ -35,7 +37,7 @@ def test_proposal_accept_preserves_document_content_and_registry_is_authoritativ
     assert governance['authority'] == 'human'
 
     approvals = json.loads((tmp_path / '.thesys' / 'approvals.json').read_text(encoding='utf-8-sig'))
-    approval = approvals['approvals']['governance:default']
+    approval = approvals['approvals']['governance:' + tmp_path.name]
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
     assert approval['sha256'] == digest
 
@@ -64,5 +66,5 @@ def test_lifecycle_metadata_is_not_rendered_inside_artifacts(tmp_path):
         'retirement',
     ):
         sections = {section.id: '' for section in template_contract(m, stage_id).sections}
-        content = render_template(m, stage_id, sections, 'pt-BR', 'default')
+        content = render_template(m, stage_id, sections, 'pt-BR', 'test-project')
         assert not any(marker in content for marker in lifecycle_metadata_markers), stage_id

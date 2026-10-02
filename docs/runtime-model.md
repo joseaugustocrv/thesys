@@ -34,7 +34,7 @@ Verification is different: the runtime executes the configured verification comm
 
 ## Scope model
 
-Project-scoped artifacts include the Intent and Governance. Engineering Context and downstream artifacts may be unit-scoped. A project can therefore contain a hierarchy such as:
+Project-scoped artifacts include Intent, Governance, Engineering Units and System Architecture. Engineering Context and downstream delivery/verification artifacts may be unit-scoped. A project can therefore contain a hierarchy such as:
 
 ```text
 System
@@ -48,7 +48,7 @@ System
     └── Observability
 ```
 
-Project-level approvals are inherited by child units; unit-specific context and downstream engineering remain independently controlled. Once child Units exist, `default` is a container and does not receive unit-scoped lifecycle artifacts.
+Project-level stages provide project-wide constraints and integration points; unit-scoped stages remain independently controlled for each applicable Engineering Unit. When no Engineering Units exist, the Project root itself is the single work target for unit-scoped lifecycle stages. Once child Units exist, only those Units receive unit-scoped lifecycle artifacts; the Project remains the root entity and receives project-scoped stages.
 
 ## Change propagation
 

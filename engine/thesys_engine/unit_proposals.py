@@ -1,7 +1,5 @@
 from dataclasses import dataclass
-from pathlib import Path
 from datetime import datetime, timezone
-import hashlib
 import json
 import os
 import re
@@ -10,7 +8,11 @@ import unicodedata
 from .errors import ProjectError, ThesysError
 from .io import read_text, write_text
 from .intents import intent_digest, read_intent
-from .project import create_unit, unit_info
+from .project import create_unit, project_key
+from .workflow import proposal_path as lifecycle_proposal_path, sha
+
+
+ENGINEERING_UNITS_STAGE = "engineering-units"
 
 
 @dataclass(frozen=True)
@@ -20,7 +22,7 @@ class UnitProposal:
     scope: str
     rationale: str
     unit_type: str = "capability"
-    parent: str = "default"
+    parent: str = "project"
     dependencies: tuple[str, ...] = ()
 
 
@@ -31,11 +33,24 @@ class UnitProposalResult:
 
 
 def proposal_dir(project):
-    return project / ".thesys" / "proposals" / "engineering-units"
+    """Canonical lifecycle proposal location for the Engineering Units stage."""
+    return lifecycle_proposal_path(project, ENGINEERING_UNITS_STAGE, project_key(project)) .parent
 
 
 def proposal_path(project):
-    return proposal_dir(project) / "proposal.json"
+    return lifecycle_proposal_path(project, ENGINEERING_UNITS_STAGE, project_key(project))
+
+
+def _legacy_proposal_path(project):
+    return project / ".thesys" / "proposals" / "engineering-units" / "proposal.json"
+
+
+def _readable_proposal_path(project):
+    current = proposal_path(project)
+    if current.is_file():
+        return current
+    legacy = _legacy_proposal_path(project)
+    return legacy if legacy.is_file() else current
 
 
 def slug(value):
@@ -50,21 +65,13 @@ ALLOWED_UNIT_TYPES = (
 )
 
 _UNIT_TYPE_ALIASES = {
-    "sistema": "system",
-    "dominio": "domain",
-    "capacidade": "capability",
-    "epico": "epic",
-    "modulo": "module",
-    "servico": "service",
-    "funcionalidade": "feature",
-    "mudanca": "change",
-    "defeito": "defect",
-    "migracao": "migration",
-    "remediacao-de-seguranca": "security-remediation",
-    "iniciativa-de-arquitetura": "architecture-initiative",
-    "divida-tecnica": "technical-debt",
+    "sistema": "system", "dominio": "domain", "capacidade": "capability", "epico": "epic",
+    "modulo": "module", "servico": "service", "funcionalidade": "feature", "mudanca": "change",
+    "defeito": "defect", "migracao": "migration", "remediacao-de-seguranca": "security-remediation",
+    "iniciativa-de-arquitetura": "architecture-initiative", "divida-tecnica": "technical-debt",
     "mudanca-de-plataforma": "platform-change",
 }
+
 
 def canonical_unit_type(value):
     raw = str(value or "").strip().lower()
@@ -79,7 +86,6 @@ def _validate(items):
     if not items:
         raise ThesysError("Engineering unit proposal contains no units.")
     keys = set()
-    allowed_types=set(ALLOWED_UNIT_TYPES)
     for item in items:
         if not re.fullmatch(r"[a-z][a-z0-9-]{1,63}", item.key):
             raise ThesysError(f"Invalid engineering unit key: {item.key}")
@@ -90,46 +96,62 @@ def _validate(items):
             raise ThesysError(f"Engineering unit proposal is incomplete: {item.key}")
         if item.parent == item.key or item.key in item.dependencies:
             raise ThesysError(f"Engineering unit cannot depend on itself: {item.key}")
-        if item.unit_type not in allowed_types:
+        if item.unit_type not in ALLOWED_UNIT_TYPES:
             raise ThesysError(f"Unsupported engineering unit type: {item.unit_type}")
 
-    # A proposal is a graph, not merely a list. Reject cycles before acceptance
-    # so a malformed hierarchy can never make the acceptance loop ambiguous.
-    parents={item.key:item.parent for item in items if item.parent in keys}
+    parents = {item.key: item.parent for item in items if item.parent in keys}
     for key in parents:
-        seen=set(); current=key
+        seen = set(); current = key
         while current in parents:
             if current in seen:
                 raise ThesysError(f"Engineering unit parent hierarchy contains a cycle at: {current}")
-            seen.add(current); current=parents[current]
+            seen.add(current); current = parents[current]
 
-    dependencies={item.key:set(item.dependencies) & keys for item in items}
-    colors={key:0 for key in dependencies}  # 0=unvisited, 1=active, 2=complete
+    dependencies = {item.key: set(item.dependencies) & keys for item in items}
+    colors = {key: 0 for key in dependencies}
     def visit(key):
         if colors[key] == 1:
             raise ThesysError(f"Engineering unit dependency graph contains a cycle at: {key}")
         if colors[key] == 2:
             return
-        colors[key]=1
+        colors[key] = 1
         for dependency in dependencies[key]:
             visit(dependency)
-        colors[key]=2
+        colors[key] = 2
     for key in dependencies:
         visit(key)
 
 
-def write_proposal(project, provider, items, decompose=True):
-    _validate(items) if items else None
-    if decompose and not items:
-        raise ThesysError("Engineering unit proposal marked for decomposition but contains no units.")
-    d = proposal_dir(project); d.mkdir(parents=True, exist_ok=True)
+def _input_fingerprint(project, methodology):
+    from .workflow import authoritative_inputs
+    from .guidance import guidance_inputs
+    stage = methodology.stage(ENGINEERING_UNITS_STAGE)
+    inputs = {
+        "authoritative": authoritative_inputs(project, methodology, stage, project_key(project)),
+        "guidance": guidance_inputs(project, methodology, stage, project_key(project)),
+    }
+    return sha(json.dumps(inputs, ensure_ascii=False, sort_keys=True))
+
+
+def write_proposal(project, provider, items, decompose=True, input_fingerprint=None):
+    if decompose:
+        _validate(items)
+    elif items:
+        raise ThesysError("Engineering unit proposal contains units while decomposition is disabled.")
+    path = proposal_path(project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    proposal_id = "PROP-" + sha(json.dumps({"input_fingerprint": input_fingerprint, "provider": provider, "units": [x.key for x in items]}, sort_keys=True))[:12].upper()
     payload = {
-        "schema": "1",
+        "schema": "2",
+        "proposal_id": proposal_id,
+        "stage": ENGINEERING_UNITS_STAGE,
+        "unit": project_key(project),
         "status": "proposed",
         "provider": provider,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "source_intent": "engineering/intent/intent.md",
         "intent_sha256": intent_digest(project),
+        "input_fingerprint": input_fingerprint,
         "decompose": bool(decompose),
         "engineering_units": [
             {"key": x.key, "name": x.name, "scope": x.scope, "rationale": x.rationale,
@@ -137,23 +159,29 @@ def write_proposal(project, provider, items, decompose=True):
             for x in items
         ],
     }
-    write_text(proposal_path(project), json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-    return proposal_path(project)
+    write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    return path
 
 
 def read_proposal(project):
-    path = proposal_path(project)
+    path = _readable_proposal_path(project)
     if not path.is_file():
-        raise ProjectError("Engineering unit proposal not found. Run 'thesys unit propose' first.")
+        raise ProjectError("Engineering unit proposal not found. Generate the Engineering Units stage first.")
     try:
         data = json.loads(read_text(path))
     except json.JSONDecodeError as exc:
         raise ProjectError("Engineering unit proposal is invalid JSON.") from exc
-    items = [UnitProposal(
-        key=x.get("key",""), name=x.get("name",""), scope=x.get("scope",""),
-        rationale=x.get("rationale",""), unit_type=canonical_unit_type(x.get("type","capability")),
-        parent=x.get("parent","default"), dependencies=tuple(x.get("dependencies",[]))
-    ) for x in data.get("engineering_units",[])]
+    root = project_key(project)
+    items = []
+    for x in data.get("engineering_units", []):
+        parent = x.get("parent", root)
+        if parent in {"default", "project"}:
+            parent = root
+        items.append(UnitProposal(
+            key=x.get("key", ""), name=x.get("name", ""), scope=x.get("scope", ""),
+            rationale=x.get("rationale", ""), unit_type=canonical_unit_type(x.get("type", "capability")),
+            parent=parent, dependencies=tuple(x.get("dependencies", []))
+        ))
     if data.get("decompose", bool(items)):
         _validate(items)
     elif items:
@@ -162,156 +190,211 @@ def read_proposal(project):
 
 
 def _capability_lines(intent):
-    lines = intent.splitlines(); in_section=False; values=[]
-    headings=("capabilities","expected capabilities","in scope","scope")
+    lines = intent.splitlines(); in_section = False; values = []
+    headings = ("capabilities", "expected capabilities", "in scope", "scope")
     for line in lines:
-        stripped=line.strip()
+        stripped = line.strip()
         if stripped.startswith("## "):
-            in_section=stripped[3:].strip().lower() in headings
+            in_section = stripped[3:].strip().lower() in headings
             continue
         if not in_section:
             continue
         if re.match(r"^(?:[-*]|\d+\.)\s+", stripped):
-            value=re.sub(r"^(?:[-*]|\d+\.)\s+", "", stripped).strip()
+            value = re.sub(r"^(?:[-*]|\d+\.)\s+", "", stripped).strip()
             if value and not value.startswith("["):
                 values.append(value.rstrip("."))
     return values
 
 
 class MockUnitAgent:
-    name="mock"
-    def propose_units(self, intent):
-        items=[]
-        seen=set()
+    name = "mock"
+    def propose_units(self, intent, governance="", project_root="project"):
+        items = []
+        seen = set()
         for value in _capability_lines(intent):
-            key=slug(value)
-            if not key or key in seen: continue
+            key = slug(value)
+            if not key or key in seen:
+                continue
             seen.add(key)
-            items.append(UnitProposal(key, value, value + ".", "The capability is explicitly stated in the Intent."))
+            items.append(UnitProposal(key, value, value + ".", "The capability is explicitly stated in the Intent.", parent=project_root))
         return UnitProposalResult(bool(items), tuple(items))
 
 
 class OpenAIUnitAgent:
-    name="openai"
+    name = "openai"
     def __init__(self, client=None):
         if client is not None:
-            self.client=client
+            self.client = client
         else:
             try:
                 from openai import OpenAI
             except ImportError as exc:
                 raise ThesysError("The OpenAI SDK is not installed. Reinstall Thesys with: python -m pip install -e .") from exc
-            key=os.getenv("OPENAI_API_KEY")
-            if not key: raise ThesysError("OPENAI_API_KEY is not configured.")
-            self.client=OpenAI(api_key=key)
-        self.model=os.getenv("THESYS_OPENAI_MODEL","gpt-5.6-luna")
+            key = os.getenv("OPENAI_API_KEY")
+            if not key:
+                raise ThesysError("OPENAI_API_KEY is not configured.")
+            self.client = OpenAI(api_key=key)
+        self.model = os.getenv("THESYS_OPENAI_MODEL", "gpt-5.6-luna")
 
-    def propose_units(self, intent):
-        schema={
+    def propose_units(self, intent, governance="", project_root="project"):
+        schema = {
             "type": "object",
             "properties": {
                 "decompose": {"type": "boolean"},
-                "engineering_units": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "key": {"type": "string"},
-                            "name": {"type": "string"},
-                            "scope": {"type": "string"},
-                            "rationale": {"type": "string"},
-                            "type": {"type": "string", "enum": list(ALLOWED_UNIT_TYPES)},
-                            "parent": {"type": "string"},
-                            "dependencies": {"type": "array", "items": {"type": "string"}},
-                        },
-                        "required": ["key", "name", "scope", "rationale", "type", "parent", "dependencies"],
-                        "additionalProperties": False,
+                "engineering_units": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {
+                        "key": {"type": "string"}, "name": {"type": "string"},
+                        "scope": {"type": "string"}, "rationale": {"type": "string"},
+                        "type": {"type": "string", "enum": list(ALLOWED_UNIT_TYPES)},
+                        "parent": {"type": "string"}, "dependencies": {"type": "array", "items": {"type": "string"}},
                     },
-                },
+                    "required": ["key", "name", "scope", "rationale", "type", "parent", "dependencies"],
+                    "additionalProperties": False,
+                }},
             },
-            "required": ["decompose", "engineering_units"],
-            "additionalProperties": False,
+            "required": ["decompose", "engineering_units"], "additionalProperties": False,
         }
-        instructions=("Propose Engineering Units from the authoritative Intent. First decide whether decomposition is justified by the complexity and scope explicitly established by the Intent. If the project is small enough to remain coherent as one system, set decompose=false and return an empty engineering_units array. If decomposition is justified, set decompose=true and propose only a small number of coherent units. Units are coherent scopes used to organize engineering work; they are not lifecycle stages and not automatically architecture boundaries. Do not invent requirements, technologies, APIs, architecture or business decisions. The `type` field MUST use one of the canonical English values from the schema; do not translate these enum values even when the project language is Portuguese. Return a non-authoritative proposal for human review.")
+        instructions = (
+            "Propose Engineering Units for the current lifecycle stage from the authoritative Intent and Governance. "
+            "First decide whether decomposition is justified by the complexity and scope explicitly established by those artifacts. "
+            "If the project is small enough to remain coherent as one system, set decompose=false and return an empty engineering_units array. "
+            "If decomposition is justified, propose only a small number of coherent units. Units are organizational scopes used to organize engineering work; "
+            "they are not lifecycle stages and do not automatically define runtime components, deployment boundaries, APIs or architecture boundaries. "
+            "Do not invent requirements, technologies, APIs, architecture or business decisions. The type field MUST use canonical English enum values. "
+            "The parent of every top-level Engineering Unit MUST be the Project root key supplied by the runtime; never invent a synthetic root Engineering Unit. Return a non-authoritative proposal for human review."
+        )
+        input_text = "Authoritative Intent:\n\n" + intent + "\n\nAuthoritative Governance:\n\n" + governance
         try:
-            response=self.client.responses.create(model=self.model,instructions=instructions,input="Authoritative Intent:\n\n"+intent,text={"format":{"type":"json_schema","name":"thesys_engineering_unit_proposal","strict":True,"schema":schema}})
+            response = self.client.responses.create(
+                model=self.model, instructions=instructions, input=input_text,
+                text={"format": {"type": "json_schema", "name": "thesys_engineering_unit_proposal", "strict": True, "schema": schema}},
+            )
         except Exception as exc:
             raise ThesysError(f"OpenAI request failed: {exc}") from exc
-        try: data=json.loads(response.output_text)
-        except (json.JSONDecodeError,TypeError) as exc: raise ThesysError("OpenAI returned an invalid engineering unit proposal.") from exc
-        items=[]
-        for x in data.get("engineering_units",[]):
-            key=slug(x.get("key","")); parent=slug(x.get("parent","default")) or "default"
-            deps=tuple(slug(v) for v in x.get("dependencies",[]))
+        try:
+            data = json.loads(response.output_text)
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise ThesysError("OpenAI returned an invalid engineering unit proposal.") from exc
+        items = []
+        for x in data.get("engineering_units", []):
+            key = slug(x.get("key", "")); parent = slug(x.get("parent", project_root)) or project_root
+            deps = tuple(slug(v) for v in x.get("dependencies", []))
             unit_type = canonical_unit_type(x.get("type", "capability"))
-            items.append(UnitProposal(key,x.get("name","").strip(),x.get("scope","").strip(),x.get("rationale","").strip(),unit_type,parent,deps))
-        _validate(items) if data.get("decompose", True) else None
-        if data.get("decompose", True) and not items:
-            raise ThesysError("OpenAI returned decompose=true without any Engineering Units.")
-        if not data.get("decompose", True) and items:
+            items.append(UnitProposal(key, x.get("name", "").strip(), x.get("scope", "").strip(), x.get("rationale", "").strip(), unit_type, parent, deps))
+        if data.get("decompose", True):
+            _validate(items)
+            if not items:
+                raise ThesysError("OpenAI returned decompose=true without any Engineering Units.")
+        elif items:
             raise ThesysError("OpenAI returned Engineering Units while decompose=false.")
         return UnitProposalResult(bool(data.get("decompose", True)), tuple(items))
 
 
-def _intent_is_currently_approved(project):
-    approvals = project / ".thesys" / "approvals.json"
-    if not approvals.is_file():
-        return False
-    try:
-        data=json.loads(read_text(approvals))
-    except json.JSONDecodeError:
-        return False
-    approval=data.get("approvals",{}).get("intent:default")
-    return bool(approval and approval.get("sha256") == intent_digest(project))
+def _authoritative_inputs(project, methodology):
+    from .workflow import authoritative_inputs
+    stage = methodology.stage(ENGINEERING_UNITS_STAGE)
+    return authoritative_inputs(project, methodology, stage, project_key(project))
 
 
 def generate_unit_proposal(project, provider="openai", methodology=None):
-    # Use the same authoritative gate semantics exposed by `thesys status`.
-    # This avoids a second, subtly different approval implementation.
     if methodology is None:
         from .methodology import load_methodology
         methodology = load_methodology(Path(__file__).resolve().parents[2])
     from .gates import status
-    if status(project, methodology, "default").get("intent", {}).get("status") != "approved":
-        raise ProjectError("Engineering unit proposals require the current Intent to be human-approved first.")
+    if status(project, methodology, project_key(project)).get("governance", {}).get("status") != "approved":
+        raise ProjectError("Engineering unit proposals require current Governance approval first.")
     intent = read_intent(project)
-    if proposal_path(project).is_file():
-        data,_=read_proposal(project)
-        if data.get("status")=="accepted": raise ProjectError("Engineering unit proposal has already been accepted.")
-        raise ProjectError("An engineering unit proposal already exists; review or accept it before generating another.")
-    agent = MockUnitAgent() if provider=="mock" else OpenAIUnitAgent() if provider=="openai" else None
-    if agent is None: raise ThesysError(f"Unknown unit proposal agent: {provider}")
-    result = agent.propose_units(intent)
-    return write_proposal(project, agent.name, result.units, result.decompose)
+    governance_path = methodology.artifact_path(project, methodology.stage("governance"), project_key(project))
+    governance = read_text(governance_path) if governance_path and governance_path.is_file() else ""
+    path = proposal_path(project)
+    if path.is_file():
+        data, _ = read_proposal(project)
+        if data.get("status") == "accepted":
+            raise ProjectError("Engineering unit proposal has already been accepted.")
+        raise ProjectError("An Engineering Units proposal already exists; review or accept it before generating another.")
+    agent = MockUnitAgent() if provider == "mock" else OpenAIUnitAgent() if provider == "openai" else None
+    if agent is None:
+        raise ThesysError(f"Unknown unit proposal agent: {provider}")
+    result = agent.propose_units(intent, governance, project_key(project))
+    return write_proposal(project, agent.name, result.units, result.decompose, _input_fingerprint(project, methodology))
+
+
+def render_authoritative_artifact(project, methodology, data, items):
+    language = __import__("thesys_engine.project", fromlist=["project_language"]).project_language(project, methodology.language)
+    name = __import__("thesys_engine.project", fromlist=["project_info"]).project_info(project).get("name", project.name)
+    pt = language.lower().startswith("pt-")
+    yes, no = ("Sim", "Não") if pt else ("Yes", "No")
+    lines = [
+        f"# {'Unidades de Engenharia' if pt else 'Engineering Units'} — {name}",
+        "", f"## {'Decisão de decomposição' if pt else 'Decomposition decision'}", "",
+        f"- {'Decomposição' if pt else 'Decomposition'}: {yes if data.get('decompose') else no}",
+        f"- {'Provedor da proposta' if pt else 'Proposal provider'}: {data.get('provider', 'unknown')}",
+        "",
+        f"## {'Mapa das Unidades de Engenharia' if pt else 'Engineering Unit map'}", "",
+        f"| {'Unidade' if pt else 'Unit'} | {'Nome' if pt else 'Name'} | {'Tipo' if pt else 'Type'} | {'Pai' if pt else 'Parent'} | {'Escopo' if pt else 'Scope'} | {'Dependências' if pt else 'Dependencies'} |",
+        "|---|---|---|---|---|---|",
+    ]
+    if items:
+        for item in items:
+            deps = ", ".join(item.dependencies) or "—"
+            lines.append(f"| `{item.key}` | {item.name} | `{item.unit_type}` | `{item.parent}` | {item.scope} | {deps} |")
+    else:
+        lines.append(f"| `{project_key(project)}` | {name} | `project` | — | {'Projeto completo' if pt else 'Project-wide'} | — |")
+    lines += [
+        "", f"## {'Limite de complexidade' if pt else 'Complexity boundary'}", "",
+        ("As Unidades de Engenharia são escopos organizacionais para o trabalho do ciclo de vida. Elas não definem automaticamente componentes de execução, APIs, implantação ou limites arquiteturais."
+         if pt else
+         "Engineering Units are organizational scopes for lifecycle work. They do not automatically define runtime components, APIs, deployment boundaries or architecture boundaries."),
+        "",
+        f"## {'Governança' if pt else 'Governance'}", "",
+        ("A decomposição acima foi derivada de uma proposta não autoritativa e só se torna parte da estrutura do projeto após aprovação humana desta etapa."
+         if pt else
+         "The decomposition above was derived from a non-authoritative proposal and becomes part of the project structure only after human approval of this stage."),
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def accept_unit_proposal(project, methodology):
-    data, items=read_proposal(project)
-    if data.get("status")!="proposed": raise ProjectError("Only a proposed engineering unit proposal can be accepted.")
+    data, items = read_proposal(project)
+    if data.get("status") != "proposed":
+        raise ProjectError("Only a proposed Engineering Units proposal can be accepted.")
+    current = _input_fingerprint(project, methodology)
+    if data.get("input_fingerprint") and data.get("input_fingerprint") != current:
+        raise ProjectError("Engineering Units proposal is stale because an authoritative upstream artifact changed. Generate a new proposal.")
     if data.get("intent_sha256") != intent_digest(project):
-        raise ProjectError("Engineering unit proposal is stale because the authoritative Intent changed. Generate a new proposal.")
-    existing={p.stem for p in (project/".thesys"/"units").glob("*.json")}
+        raise ProjectError("Engineering Units proposal is stale because the authoritative Intent changed. Generate a new proposal.")
+    existing = {p.stem for p in (project / ".thesys" / "units").glob("*.json")}
     for item in items:
-        if item.key in existing: raise ProjectError(f"Engineering unit already exists: {item.key}")
-    keys={x.key for x in items}
+        if item.key in existing:
+            raise ProjectError(f"Engineering unit already exists: {item.key}")
+    keys = {x.key for x in items}
     for item in items:
-        if item.parent!="default" and item.parent not in keys and item.parent not in existing:
+        if item.parent not in {project_key(project)} and item.parent not in keys and item.parent not in existing:
             raise ProjectError(f"Engineering unit '{item.key}' references unknown parent: {item.parent}")
-        unknown=[d for d in item.dependencies if d not in keys and d not in existing]
-        if unknown: raise ProjectError(f"Engineering unit '{item.key}' references unknown dependencies: {', '.join(unknown)}")
-    created=[]; remaining=list(items)
+        unknown = [d for d in item.dependencies if d not in keys and d not in existing]
+        if unknown:
+            raise ProjectError(f"Engineering unit '{item.key}' references unknown dependencies: {', '.join(unknown)}")
+    created = []; remaining = list(items)
     try:
         while remaining:
-            progressed=False
+            progressed = False
             for item in remaining[:]:
-                if item.parent!="default" and item.parent in keys and item.parent not in existing:
-                    if item.parent not in {x.key for x in remaining}: continue
-                path=create_unit(project,item.key,item.name,item.scope,item.unit_type,item.parent,methodology,dependencies=list(item.dependencies))
-                created.append(path); existing.add(item.key); remaining.remove(item); progressed=True
-            if not progressed: raise ProjectError("Engineering unit proposal contains an unresolved parent hierarchy.")
+                if item.parent != project_key(project) and item.parent in keys and item.parent not in existing:
+                    if item.parent not in {x.key for x in remaining}:
+                        continue
+                    continue
+                path = create_unit(project, item.key, item.name, item.scope, item.unit_type, item.parent, methodology, dependencies=list(item.dependencies))
+                created.append(path); existing.add(item.key); remaining.remove(item); progressed = True
+            if not progressed:
+                raise ProjectError("Engineering unit proposal contains an unresolved parent hierarchy.")
     except Exception:
-        for path in created: path.unlink(missing_ok=True)
+        for path in created:
+            path.unlink(missing_ok=True)
         raise
-    data["status"]="accepted"; data["accepted_at"]=datetime.now(timezone.utc).isoformat()
-    write_text(proposal_path(project),json.dumps(data,ensure_ascii=False,indent=2)+"\n")
-    return created
+    # The generic lifecycle approval path owns the authoritative approval record
+    # and proposal status. This function only materializes the accepted unit map.
+    artifact = methodology.artifact_path(project, methodology.stage(ENGINEERING_UNITS_STAGE), project_key(project))
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    write_text(artifact, render_authoritative_artifact(project, methodology, data, items))
+    return artifact

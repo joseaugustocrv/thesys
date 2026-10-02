@@ -10,8 +10,8 @@ architecture, plan, and tasks for the target unit.
 ## Output
 
 The implementation agent returns a structured set of project-relative files.
-The runtime validates paths, writes files only under allowed roots, and records
-an implementation manifest.
+The runtime validates paths, writes files only under methodology-defined allowed roots
+or explicitly allowed root-level files, and records an implementation manifest.
 
 ## Safety
 

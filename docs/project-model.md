@@ -82,12 +82,14 @@ Project
   ↓
 Intent & Discovery
   ↓
-Authoritative Intent + Context
+Governance
+  ↓
+Engineering Units (approved stage)
   ↓
 Lifecycle execution
 ```
 
-Engineering Units are the mechanism for controlling complexity in larger scopes. A small project may use the default system unit directly. When a project benefits from separate scopes, the human can introduce units from the authoritative Intent:
+Engineering Units are the mechanism for controlling complexity in larger scopes. A small project uses the Project root as its single work target. When a project benefits from separate Engineering Units, the human can introduce them from the authoritative Intent:
 
 ```text
 Authoritative Intent
@@ -96,12 +98,12 @@ Engineering Unit Proposal
   ↓
 Human review and acceptance
   ↓
-Engineering Units
+Authoritative Engineering Unit Map
   ↓
-Lifecycle execution per relevant unit
+Lifecycle execution per relevant Unit
 ```
 
-A simple project may continue with the default unit without an explicit
+A simple project may continue with the Project root as its only work target without an explicit
 decomposition step. Larger systems can use multiple units and preserve parent,
 dependency and traceability relationships between them.
 
@@ -125,7 +127,7 @@ System
 └── Infrastructure
 ```
 
-Each unit can carry its own context, requirements, specification, acceptance, local architecture, plan, implementation and verification while retaining parent, dependency and traceability relationships. When multiple Units exist, the default system unit becomes the project/system container for unit-scoped work. The lifecycle then returns to a project-level System Architecture Integration stage that synthesizes the approved Unit architectures into a system view without replacing them.
+Each unit can carry its own context, requirements, specification, acceptance, local architecture, plan, implementation and verification while retaining parent, dependency and traceability relationships. When multiple Units exist, the Project remains the root entity and unit-scoped work is performed by those Units. The lifecycle then returns to a project-level System Architecture Integration stage that synthesizes the approved Unit architectures into a system view without replacing them.
 
 ## Changing an Intent
 
