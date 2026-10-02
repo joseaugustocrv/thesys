@@ -32,3 +32,21 @@ def test_implementation_rejects_unsafe_paths(tmp_path):
     data=json.loads(p.read_text(encoding='utf-8-sig')); body=json.loads(data['content']); body['files']={'../escape.py':'x'}; data['content']=json.dumps(body); p.write_text(json.dumps(data),encoding='utf8')
     with pytest.raises(ProjectError):
         main(['implementation','accept','--path',str(tmp_path)])
+
+def test_implementation_accepts_explicit_root_files_and_list_payload(tmp_path):
+    complete_to_implementation(tmp_path)
+    assert main(['implementation','propose','--agent','mock','--path',str(tmp_path)])==0
+    import json
+    proposal_path=tmp_path / '.thesys' / 'proposals' / tmp_path.name / 'implementation.json'
+    data=json.loads(proposal_path.read_text(encoding='utf-8-sig'))
+    body=json.loads(data['content'])
+    body['files']=[
+        {'path':'index.html','content':'<!doctype html>\n'},
+        {'path':'src/main.py','content':'print(\"ok\")\n'},
+    ]
+    data['content']=json.dumps(body)
+    proposal_path.write_text(json.dumps(data),encoding='utf8')
+    assert main(['implementation','accept','--path',str(tmp_path)])==0
+    assert (tmp_path/'index.html').is_file()
+    assert (tmp_path/'src/main.py').is_file()
+

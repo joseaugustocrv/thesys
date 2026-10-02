@@ -288,6 +288,7 @@ lifecycle:
     implementation:
       output_root: "."
       allowed_roots: ["src", "app", "tests", "scripts", "migrations"]
+      allowed_root_files: ["index.html", "README.md"]
       require_approved_context: true
       execute_generated_code: false
     verification:

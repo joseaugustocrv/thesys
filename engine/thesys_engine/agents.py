@@ -306,12 +306,17 @@ class OpenAIAgent(Agent):
             },
             'required': ['files','questions'], 'additionalProperties': False,
         }
+        rules=m.rules.get('implementation',{})
+        allowed_roots=list(rules.get('allowed_roots',[]))
+        allowed_root_files=list(rules.get('allowed_root_files',[]))
         instructions = (
             f'Generate a non-authoritative implementation proposal from approved engineering artifacts. Project language: {c.language}. '
             'Write human-readable comments and docstrings in the project language while preserving code syntax, identifiers, paths and API names. '
-            'Return only relative paths under allowed roots. Never include secrets or claim that tests were executed.'
+            f'Return only project-relative files under these allowed roots: {json.dumps(allowed_roots,ensure_ascii=False)}. '
+            f'Root-level files are allowed only when explicitly listed here: {json.dumps(allowed_root_files,ensure_ascii=False)}. '
+            'Never include secrets or claim that tests were executed.'
         )
-        inp = f'Unit: {c.unit}\nScope: {c.unit_scope}\nAuthoritative artifacts:\n{json.dumps(c.approved_artifacts,ensure_ascii=False,indent=2)}\nHuman answers:\n{json.dumps(c.answers,ensure_ascii=False,indent=2)}'
+        inp = f'Unit: {c.unit}\nScope: {c.unit_scope}\nAllowed roots: {json.dumps(allowed_roots,ensure_ascii=False)}\nAllowed root files: {json.dumps(allowed_root_files,ensure_ascii=False)}\nAuthoritative artifacts:\n{json.dumps(c.approved_artifacts,ensure_ascii=False,indent=2)}\nHuman answers:\n{json.dumps(c.answers,ensure_ascii=False,indent=2)}'
         return self._call(instructions, inp, schema, 'thesys_implementation_proposal')
 
 

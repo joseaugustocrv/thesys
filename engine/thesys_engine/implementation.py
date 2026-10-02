@@ -38,11 +38,27 @@ def accept(project,m,unit=None):
  import hashlib
  if p.get('input_fingerprint')!=hashlib.sha256(json.dumps(inputs,ensure_ascii=False,sort_keys=True).encode()).hexdigest(): raise ProjectError('Implementation proposal is stale; regenerate it.')
  files=json.loads(p['content']).get('files',{})
- rules=m.rules.get('implementation',{}); allowed=rules.get('allowed_roots',[])
+ if isinstance(files,list):
+  normalized={}
+  for item in files:
+   if not isinstance(item,dict) or not isinstance(item.get('path'),str) or not isinstance(item.get('content'),str):
+    raise ProjectError('Invalid implementation proposal: each file must contain string path and content.')
+   raw=item['path']
+   if raw in normalized:
+    raise ProjectError(f'Duplicate generated path: {raw}')
+   normalized[raw]=item['content']
+  files=normalized
+ elif isinstance(files,dict):
+  if any(not isinstance(raw,str) or not isinstance(content,str) for raw,content in files.items()):
+   raise ProjectError('Invalid implementation proposal: file paths and contents must be strings.')
+ else:
+  raise ProjectError('Invalid implementation proposal: files must be a list or object.')
+ rules=m.rules.get('implementation',{}); allowed=set(rules.get('allowed_roots',[])); allowed_root_files=set(rules.get('allowed_root_files',[]))
  manifest=[]
  for raw,content in files.items():
   rel=Path(raw)
-  if rel.is_absolute() or '..' in rel.parts or not rel.parts or rel.parts[0] not in allowed: raise ProjectError(f'Unsafe generated path: {raw}')
+  is_root_file=len(rel.parts)==1 and raw in allowed_root_files
+  if rel.is_absolute() or '..' in rel.parts or not rel.parts or (rel.parts[0] not in allowed and not is_root_file): raise ProjectError(f'Unsafe generated path: {raw}')
   target=project/rel; target.parent.mkdir(parents=True,exist_ok=True); write_text(target,content); manifest.append(raw)
  ex=m.execution_path(project,stage,unit); ex.parent.mkdir(parents=True,exist_ok=True); from .gates import _dep_fingerprint
  fp=hashlib.sha256(json.dumps(_dep_fingerprint(project,m,stage,unit),sort_keys=True).encode()).hexdigest(); write_text(ex,json.dumps({'unit':unit,'files':manifest,'input_fingerprint':fp,'proposal_id':p['proposal_id']},indent=2)+'\n')
